@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\Schools\SchoolController;
 use App\Http\Controllers\Api\V1\Suppliers\SupplierController;
 use App\Http\Controllers\Api\V1\Users\UserController;
 use App\Http\Controllers\Api\V1\FixedAssets\AssetCategoryController;
+use App\Http\Controllers\Api\V1\FixedAssets\AssetMaintenanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -99,5 +100,10 @@ Route::prefix('v1')->group(function () {
         // Additional user management routes
         Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
         Route::patch('/users/{user}/approve', [UserController::class, 'approve']);
+
+        // Asset Maintenance
+        Route::apiResource('/maintenances', AssetMaintenanceController::class);
+        Route::patch('/maintenances/{assetMaintenance}/complete', [AssetMaintenanceController::class, 'complete']);
+
     });
 });
