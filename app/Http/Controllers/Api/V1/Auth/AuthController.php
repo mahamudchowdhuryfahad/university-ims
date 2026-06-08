@@ -67,30 +67,29 @@ class AuthController extends Controller
     }
 
     public function register(Request $request): JsonResponse
-    {
-        $request->validate([
-            'name'     => ['required', 'string', 'max:255'],
-            'email'    => ['required', 'email', 'unique:users'],
-            'password' => ['required', 'min:8'],
-        ]);
+{
+    $request->validate([
+        'name'                  => ['required', 'string', 'max:255'],
+        'email'                 => ['required', 'email', 'unique:users'],
+        'password'              => ['required', 'min:8', 'confirmed'],
+        'requested_role'        => ['nullable', 'string'],
+    ]);
 
-        $user = User::create([
-            'name'     => $request->name,
-            'email'    => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
+    $user = User::create([
+        'name'      => $request->name,
+        'email'     => $request->email,
+        'password'  => Hash::make($request->password),
+        'is_active' => false, // before Admin approve inactive
+    ]);
 
-        $user->assignRole('staff');
-        $token = $user->createToken('auth_token')->plainTextToken;
+    // Requested role store (staff by default)
+    $allowedRoles = ['staff', 'fixed-asset-admin', 'consumable-admin'];
+    $requestedRole = in_array($request->requested_role, $allowedRoles)
+        ? $request->requested_role
+        : 'staff';
 
-        return $this->createdResponse([
-            'token' => $token,
-            'user'  => [
-                'id'    => $user->id,
-                'name'  => $user->name,
-                'email' => $user->email,
-                'roles' => $user->getRoleNames(),
-            ],
-        ], 'Registration successful');
-    }
+    $user->assignRole($requestedRole);
+
+    return $this->createdResponse(null, 'Registration successful! Please wait for admin approval.');
+}
 }

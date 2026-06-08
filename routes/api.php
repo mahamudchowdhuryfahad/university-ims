@@ -95,5 +95,9 @@ Route::prefix('v1')->group(function () {
 
         // Asset Categories
         Route::apiResource('/asset-categories', AssetCategoryController::class);
+
+        // Additional user management routes
+        Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
+        Route::patch('/users/{user}/approve', [UserController::class, 'approve']);
     });
 });

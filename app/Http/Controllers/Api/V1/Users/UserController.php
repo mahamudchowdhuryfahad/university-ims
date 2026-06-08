@@ -14,14 +14,15 @@ class UserController extends Controller
     use ApiResponseTrait;
 
     public function index(Request $request): JsonResponse
-    {
-        $users = User::with('roles')
-            ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"))
-            ->latest()
-            ->paginate($request->per_page ?? 15);
+{
+    $users = User::with('roles')
+        ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"))
+        ->when($request->is_active !== null, fn($q) => $q->where('is_active', $request->is_active))
+        ->latest()
+        ->paginate($request->per_page ?? 15);
 
-        return $this->successResponse($users);
-    }
+    return $this->successResponse($users);
+}
 
     public function store(Request $request): JsonResponse
     {
@@ -88,4 +89,15 @@ class UserController extends Controller
         $user->update(['is_active' => !$user->is_active]);
         return $this->successResponse($user, 'User status updated successfully');
     }
+    public function approve(Request $request, User $user): JsonResponse
+{
+$validated = $request->validate([
+'role' => ['required', 'string'],
+]);
+
+$user->syncRoles([$validated['role']]);
+$user->update(['is_active' => true]);
+
+return $this->successResponse($user->fresh('roles'), 'User approved successfully');
+}
 }
