@@ -13,7 +13,7 @@ class FixedAsset extends Model
     'category_id', 'asset_category_id', 'brand_id', 'supplier_id', 'department_id',
     'room_id', 'employee_id', 'purchase_date', 'purchase_cost',
     'warranty_expiry', 'status', 'condition', 'description',
-    'image', 'created_by',
+    'image', 'created_by', 'location', 'quantity_in_store',
 ];
 
     protected static function boot()

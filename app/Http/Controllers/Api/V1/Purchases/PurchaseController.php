@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\V1\Purchases;
 
 use App\Http\Controllers\Controller;
+use App\Models\FixedAsset;
 use App\Models\Purchase;
 use App\Models\PurchaseItem;
 use App\Models\Stock;
@@ -29,13 +30,16 @@ class PurchaseController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'supplier_id'        => ['required', 'exists:suppliers,id'],
-            'warehouse_id'       => ['required', 'exists:warehouses,id'],
-            'note'               => ['nullable', 'string'],
-            'items'              => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'exists:products,id'],
-            'items.*.quantity'   => ['required', 'integer', 'min:1'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'supplier_id'               => ['required', 'exists:suppliers,id'],
+            'warehouse_id'              => ['required', 'exists:warehouses,id'],
+            'note'                      => ['nullable', 'string'],
+            'items'                     => ['required', 'array', 'min:1'],
+            'items.*.product_id'        => ['nullable', 'exists:products,id'],
+            'items.*.product_type'      => ['required', 'in:consumable,fixed_asset'],
+            'items.*.asset_name'        => ['nullable', 'string'],
+            'items.*.asset_category_id' => ['nullable', 'exists:asset_categories,id'],
+            'items.*.quantity'          => ['required', 'integer', 'min:1'],
+            'items.*.unit_price'        => ['required', 'numeric', 'min:0'],
         ]);
 
         DB::beginTransaction();
@@ -53,16 +57,22 @@ class PurchaseController extends Controller
 
             foreach ($validated['items'] as $item) {
                 PurchaseItem::create([
-                    'purchase_id' => $purchase->id,
-                    'product_id'  => $item['product_id'],
-                    'quantity'    => $item['quantity'],
-                    'unit_price'  => $item['unit_price'],
-                    'total_price' => $item['quantity'] * $item['unit_price'],
+                    'purchase_id'        => $purchase->id,
+                    'product_id'         => $item['product_id'] ?? null,
+                    'product_type'       => $item['product_type'],
+                    'asset_name'         => $item['asset_name'] ?? null,
+                    'asset_category_id'  => $item['asset_category_id'] ?? null,
+                    'quantity'           => $item['quantity'],
+                    'unit_price'         => $item['unit_price'],
+                    'total_price'        => $item['quantity'] * $item['unit_price'],
                 ]);
             }
 
             DB::commit();
-            return $this->createdResponse($purchase->load(['supplier', 'warehouse', 'items.product']), 'Purchase created successfully');
+            return $this->createdResponse(
+                $purchase->load(['supplier', 'warehouse', 'items.product']),
+                'Purchase created successfully'
+            );
         } catch (\Exception $e) {
             DB::rollBack();
             return $this->errorResponse($e->getMessage());
@@ -71,7 +81,9 @@ class PurchaseController extends Controller
 
     public function show(Purchase $purchase): JsonResponse
     {
-        return $this->successResponse($purchase->load(['supplier', 'warehouse', 'items.product', 'createdBy']));
+        return $this->successResponse(
+            $purchase->load(['supplier', 'warehouse', 'items.product', 'createdBy'])
+        );
     }
 
     public function receive(Purchase $purchase): JsonResponse
@@ -83,24 +95,42 @@ class PurchaseController extends Controller
         DB::beginTransaction();
         try {
             foreach ($purchase->items as $item) {
-                $stock = Stock::firstOrCreate(
-                    ['product_id' => $item->product_id, 'warehouse_id' => $purchase->warehouse_id],
-                    ['quantity' => 0]
-                );
 
-                $quantityBefore = $stock->quantity;
-                $stock->increment('quantity', $item->quantity);
+                if ($item->product_type === 'fixed_asset') {
+                    // Fixed Asset auto-create
+                    for ($i = 0; $i < $item->quantity; $i++) {
+                        FixedAsset::create([
+                            'name'              => $item->asset_name ?? 'Asset',
+                            'asset_category_id' => $item->asset_category_id,
+                            'supplier_id'       => $purchase->supplier_id,
+                            'purchase_date'     => now()->toDateString(),
+                            'purchase_cost'     => $item->unit_price,
+                            'status'            => 'in_store',
+                            'condition'         => 'good',
+                            'created_by'        => auth()->id(),
+                        ]);
+                    }
+                } else {
+                    // Consumable Stock update
+                    $stock = Stock::firstOrCreate(
+                        ['product_id' => $item->product_id, 'warehouse_id' => $purchase->warehouse_id],
+                        ['quantity' => 0]
+                    );
 
-                StockMovement::create([
-                    'product_id'      => $item->product_id,
-                    'warehouse_id'    => $purchase->warehouse_id,
-                    'type'            => 'purchase',
-                    'quantity'        => $item->quantity,
-                    'quantity_before' => $quantityBefore,
-                    'quantity_after'  => $stock->fresh()->quantity,
-                    'reference'       => $purchase->reference,
-                    'created_by'      => auth()->id(),
-                ]);
+                    $quantityBefore = $stock->quantity;
+                    $stock->increment('quantity', $item->quantity);
+
+                    StockMovement::create([
+                        'product_id'      => $item->product_id,
+                        'warehouse_id'    => $purchase->warehouse_id,
+                        'type'            => 'purchase',
+                        'quantity'        => $item->quantity,
+                        'quantity_before' => $quantityBefore,
+                        'quantity_after'  => $stock->fresh()->quantity,
+                        'reference'       => $purchase->reference,
+                        'created_by'      => auth()->id(),
+                    ]);
+                }
             }
 
             $purchase->update(['status' => 'received']);

@@ -81,6 +81,7 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('/employees', EmployeeController::class);
 
         // Fixed Assets
+        Route::get('/fixed-assets/stats', [FixedAssetController::class, 'stats']);
         Route::apiResource('/fixed-assets', FixedAssetController::class);
         Route::post('/fixed-assets/{fixedAsset}/assign', [FixedAssetController::class, 'assign']);
         Route::post('/fixed-assets/{fixedAsset}/return', [FixedAssetController::class, 'return']);
@@ -104,6 +105,10 @@ Route::prefix('v1')->group(function () {
         // Asset Maintenance
         Route::apiResource('/maintenances', AssetMaintenanceController::class);
         Route::patch('/maintenances/{assetMaintenance}/complete', [AssetMaintenanceController::class, 'complete']);
+        
+        // Asset Distribution
+        Route::patch('/fixed-assets/{fixedAsset}/distribute', [FixedAssetController::class, 'distribute']);
 
+        
     });
 });

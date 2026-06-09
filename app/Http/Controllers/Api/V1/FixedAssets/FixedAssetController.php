@@ -30,27 +30,37 @@ class FixedAssetController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'name'           => ['required', 'string'],
-            'serial_number'  => ['nullable', 'string'],
-            'model'          => ['nullable', 'string'],
-            'category_id'    => ['nullable', 'exists:categories,id'],
-            'brand_id'       => ['nullable', 'exists:brands,id'],
-            'department_id'  => ['nullable', 'exists:departments,id'],
-            'room_id'        => ['nullable', 'exists:rooms,id'],
-            'purchase_date'  => ['nullable', 'date'],
-            'purchase_cost'  => ['nullable', 'numeric'],
-            'warranty_expiry'=> ['nullable', 'date'],
-            'condition'      => ['nullable', 'string'],
-            'description'    => ['nullable', 'string'],
-            'asset_category_id' => ['nullable', 'exists:asset_categories,id'],
+            'name'             => ['required', 'string'],
+            'quantity'         => ['nullable', 'integer', 'min:1'],
+            'serial_number'    => ['nullable', 'string'],
+            'model'            => ['nullable', 'string'],
+            'asset_category_id'=> ['nullable', 'exists:asset_categories,id'],
+            'brand_id'         => ['nullable', 'exists:brands,id'],
+            'department_id'    => ['nullable', 'exists:departments,id'],
+            'room_id'          => ['nullable', 'exists:rooms,id'],
+            'purchase_date'    => ['nullable', 'date'],
+            'purchase_cost'    => ['nullable', 'numeric'],
+            'warranty_expiry'  => ['nullable', 'date'],
+            'condition'        => ['nullable', 'string'],
+            'description'      => ['nullable', 'string'],
+            
         ]);
 
+        $quantity = $validated['quantity'] ?? 1;
+        unset($validated['quantity']);
         $validated['created_by'] = auth()->id();
-        $asset = FixedAsset::create($validated);
+
+        $assets = [];
+            for ($i = 0; $i < $quantity; $i++) {
+                $assetData = $validated;
+                $assetData['serial_number'] = $serialNumbers[$i] ?? null;
+                $assetData['status'] = 'in_store'; // Set status to in_store for new assets
+                $assets[] = FixedAsset::create($assetData);
+            }
 
         return $this->createdResponse(
-            $asset->load(['category', 'brand', 'department', 'room']),
-            'Fixed asset created successfully'
+            count($assets) === 1 ? $assets[0] : $assets,
+            count($assets) . ' asset(s) created successfully'
         );
     }
 
@@ -139,6 +149,22 @@ class FixedAssetController extends Controller
 
         return $this->successResponse(null, 'Asset returned successfully');
     }
+    public function distribute(Request $request, FixedAsset $fixedAsset): JsonResponse
+        {
+            $validated = $request->validate([
+                'department_id' => ['required', 'exists:departments,id'],
+                'room_id'       => ['nullable', 'exists:rooms,id'],
+                'notes'         => ['nullable', 'string'],
+            ]);
+
+            $fixedAsset->update([
+                'department_id' => $validated['department_id'],
+                'room_id'       => $validated['room_id'] ?? null,
+                'status'        => 'available',
+            ]);
+
+            return $this->successResponse($fixedAsset->fresh(), 'Asset distributed successfully');
+        }
 
     public function transfer(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
@@ -208,5 +234,17 @@ class FixedAssetController extends Controller
         $fixedAsset->update(['status' => 'disposed']);
 
         return $this->successResponse($disposal, 'Asset disposed successfully');
+    }
+    public function stats(): JsonResponse
+    {
+        $stats = [
+            'in_store'          => FixedAsset::where('status', 'in_store')->count(),
+            'available'         => FixedAsset::where('status', 'available')->count(),
+            'assigned'          => FixedAsset::where('status', 'assigned')->count(),
+            'under_maintenance' => FixedAsset::where('status', 'under_maintenance')->count(),
+            'disposed'          => FixedAsset::where('status', 'disposed')->count(),
+            'total'             => FixedAsset::count(),
+        ];
+        return $this->successResponse($stats);
     }
 }
