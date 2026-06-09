@@ -15,7 +15,6 @@ use App\Http\Controllers\Api\V1\Purchases\PurchaseController;
 use App\Http\Controllers\Api\V1\Reports\ReportController;
 use App\Http\Controllers\Api\V1\Requisitions\RequisitionController;
 use App\Http\Controllers\Api\V1\Rooms\RoomController;
-use App\Http\Controllers\Api\V1\Sales\SaleController;
 use App\Http\Controllers\Api\V1\Schools\SchoolController;
 use App\Http\Controllers\Api\V1\Suppliers\SupplierController;
 use App\Http\Controllers\Api\V1\Users\UserController;
@@ -38,12 +37,12 @@ Route::prefix('v1')->group(function () {
 
         // Dashboard
         Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
-        Route::get('/dashboard/recent-sales', [DashboardController::class, 'recentSales']);
         Route::get('/dashboard/low-stock', [DashboardController::class, 'lowStock']);
 
         // Users
         Route::apiResource('/users', UserController::class);
         Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
+        Route::patch('/users/{user}/approve', [UserController::class, 'approve']);
 
         // Products
         Route::apiResource('/products', ProductController::class);
@@ -64,30 +63,35 @@ Route::prefix('v1')->group(function () {
         Route::apiResource('/purchases', PurchaseController::class);
         Route::patch('/purchases/{purchase}/receive', [PurchaseController::class, 'receive']);
 
-        // Sales
-        Route::apiResource('/sales', SaleController::class);
-
         // Reports
         Route::get('/reports/sales', [ReportController::class, 'sales']);
         Route::get('/reports/purchases', [ReportController::class, 'purchases']);
         Route::get('/reports/stock', [ReportController::class, 'stock']);
         Route::get('/reports/profit-loss', [ReportController::class, 'profitLoss']);
 
-        // University IMS
+        // University Structure
         Route::apiResource('/schools', SchoolController::class);
         Route::apiResource('/departments', DepartmentController::class);
         Route::apiResource('/buildings', BuildingController::class);
         Route::apiResource('/rooms', RoomController::class);
         Route::apiResource('/employees', EmployeeController::class);
 
-        // Fixed Assets
+        // Asset Categories
+        Route::apiResource('/asset-categories', AssetCategoryController::class);
+
+        // Fixed Assets — stats must be before api Resource to avoid route conflict
         Route::get('/fixed-assets/stats', [FixedAssetController::class, 'stats']);
         Route::apiResource('/fixed-assets', FixedAssetController::class);
         Route::post('/fixed-assets/{fixedAsset}/assign', [FixedAssetController::class, 'assign']);
         Route::post('/fixed-assets/{fixedAsset}/return', [FixedAssetController::class, 'return']);
+        Route::patch('/fixed-assets/{fixedAsset}/distribute', [FixedAssetController::class, 'distribute']);
         Route::post('/fixed-assets/{fixedAsset}/transfer', [FixedAssetController::class, 'transfer']);
         Route::get('/fixed-assets/{fixedAsset}/history', [FixedAssetController::class, 'history']);
         Route::post('/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose']);
+
+        // Asset Maintenance
+        Route::apiResource('/maintenances', AssetMaintenanceController::class);
+        Route::patch('/maintenances/{assetMaintenance}/complete', [AssetMaintenanceController::class, 'complete']);
 
         // Requisitions
         Route::apiResource('/requisitions', RequisitionController::class);
@@ -95,20 +99,5 @@ Route::prefix('v1')->group(function () {
         Route::patch('/requisitions/{requisition}/reject', [RequisitionController::class, 'reject']);
         Route::patch('/requisitions/{requisition}/fulfill', [RequisitionController::class, 'fulfill']);
 
-        // Asset Categories
-        Route::apiResource('/asset-categories', AssetCategoryController::class);
-
-        // Additional user management routes
-        Route::patch('/users/{user}/toggle-status', [UserController::class, 'toggleStatus']);
-        Route::patch('/users/{user}/approve', [UserController::class, 'approve']);
-
-        // Asset Maintenance
-        Route::apiResource('/maintenances', AssetMaintenanceController::class);
-        Route::patch('/maintenances/{assetMaintenance}/complete', [AssetMaintenanceController::class, 'complete']);
-        
-        // Asset Distribution
-        Route::patch('/fixed-assets/{fixedAsset}/distribute', [FixedAssetController::class, 'distribute']);
-
-        
     });
 });
