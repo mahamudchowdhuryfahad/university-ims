@@ -82,11 +82,11 @@ class AuthController extends Controller
         'is_active' => false, // before Admin approve inactive
     ]);
 
-    // Requested role store (staff by default)
-    $allowedRoles = ['staff', 'fixed-asset-admin', 'consumable-admin'];
+    // Requested role store (requester by default)
+    $allowedRoles = ['requester', 'fixed-asset-admin', 'consumable-admin'];
     $requestedRole = in_array($request->requested_role, $allowedRoles)
         ? $request->requested_role
-        : 'staff';
+        : 'requester';
 
     $user->assignRole($requestedRole);
 
