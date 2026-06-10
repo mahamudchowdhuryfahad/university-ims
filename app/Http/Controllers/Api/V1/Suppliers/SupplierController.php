@@ -60,8 +60,12 @@ class SupplierController extends Controller
     }
 
     public function destroy(Supplier $supplier): JsonResponse
-    {
-        $supplier->delete();
-        return $this->successResponse(null, 'Supplier deleted successfully');
+{
+    if ($supplier->purchases()->exists()) {
+        return $this->errorResponse('Cannot delete supplier with existing purchases', 422);
     }
+
+    $supplier->delete();
+    return $this->successResponse(null, 'Supplier deleted successfully');
+}
 }

@@ -63,6 +63,14 @@ class DepartmentController extends Controller
 
     public function destroy(Department $department): JsonResponse
     {
+        if ($department->employees()->exists()) {
+            return $this->errorResponse('Cannot delete department with existing employees', 422);
+        }
+
+        if ($department->fixedAssets()->exists()) {
+            return $this->errorResponse('Cannot delete department with assigned assets', 422);
+        }
+
         $department->delete();
         return $this->successResponse(null, 'Department deleted successfully');
     }

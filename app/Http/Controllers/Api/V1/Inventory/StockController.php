@@ -9,6 +9,7 @@ use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
+
 class StockController extends Controller
 {
     use ApiResponseTrait;
@@ -76,7 +77,9 @@ class StockController extends Controller
     public function lowStock(): JsonResponse
     {
         $stock = Stock::with(['product', 'warehouse'])
-            ->whereHas('product', fn($q) => $q->whereColumn('stocks.quantity', '<=', 'products.alert_quantity'))
+            ->join('products', 'stocks.product_id', '=', 'products.id')
+            ->whereRaw('stocks.quantity <= products.alert_quantity')
+            ->select('stocks.*')
             ->get();
 
         return $this->successResponse($stock);

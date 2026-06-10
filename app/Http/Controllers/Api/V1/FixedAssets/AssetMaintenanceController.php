@@ -28,21 +28,25 @@ class AssetMaintenanceController extends Controller
     {
         $validated = $request->validate([
             'fixed_asset_id'   => ['required', 'exists:fixed_assets,id'],
-            'type'             => ['required', 'string'],
+            'type'             => ['required', 'in:repair,service,inspection,upgrade'],
             'maintenance_date' => ['required', 'date'],
             'completion_date'  => ['nullable', 'date'],
             'supplier_id'      => ['nullable', 'exists:suppliers,id'],
-            'cost'             => ['nullable', 'numeric'],
-            'status'           => ['nullable', 'string'],
+            'cost'             => ['nullable', 'numeric', 'min:0'],
+            'status'           => ['nullable', 'in:pending,in_progress,completed'],
             'description'      => ['nullable', 'string'],
             'remarks'          => ['nullable', 'string'],
         ]);
 
+        $asset = FixedAsset::find($validated['fixed_asset_id']);
+
+        if (in_array($asset->status, ['disposed', 'under_maintenance'])) {
+            return $this->errorResponse('Asset is ' . $asset->status . ' and cannot be sent for maintenance', 422);
+        }
+
         $validated['created_by'] = auth()->id();
 
-        // Asset status → under_maintenance
-        FixedAsset::find($validated['fixed_asset_id'])
-            ->update(['status' => 'under_maintenance']);
+        $asset->update(['status' => 'under_maintenance']);
 
         $maintenance = AssetMaintenance::create($validated);
 
@@ -61,13 +65,17 @@ class AssetMaintenanceController extends Controller
 
     public function update(Request $request, AssetMaintenance $assetMaintenance): JsonResponse
     {
+        if ($assetMaintenance->status === 'completed') {
+            return $this->errorResponse('Cannot edit a completed maintenance record', 422);
+        }
+
         $validated = $request->validate([
-            'type'             => ['sometimes', 'string'],
+            'type'             => ['sometimes', 'in:repair,service,inspection,upgrade'],
             'maintenance_date' => ['sometimes', 'date'],
             'completion_date'  => ['nullable', 'date'],
             'supplier_id'      => ['nullable', 'exists:suppliers,id'],
-            'cost'             => ['nullable', 'numeric'],
-            'status'           => ['nullable', 'string'],
+            'cost'             => ['nullable', 'numeric', 'min:0'],
+            'status'           => ['nullable', 'in:pending,in_progress,completed'],
             'description'      => ['nullable', 'string'],
             'remarks'          => ['nullable', 'string'],
         ]);
@@ -82,11 +90,15 @@ class AssetMaintenanceController extends Controller
 
     public function complete(Request $request, AssetMaintenance $assetMaintenance): JsonResponse
     {
+        if ($assetMaintenance->status === 'completed') {
+            return $this->errorResponse('Maintenance already completed', 422);
+        }
+
         $validated = $request->validate([
             'completion_date' => ['required', 'date'],
-            'cost'            => ['nullable', 'numeric'],
+            'cost'            => ['nullable', 'numeric', 'min:0'],
             'remarks'         => ['nullable', 'string'],
-            'asset_condition' => ['nullable', 'string'],
+            'asset_condition' => ['nullable', 'in:good,fair,poor,damaged'],
         ]);
 
         $assetMaintenance->update([
@@ -96,7 +108,6 @@ class AssetMaintenanceController extends Controller
             'remarks'         => $validated['remarks'] ?? $assetMaintenance->remarks,
         ]);
 
-        // Asset status → available
         $assetMaintenance->fixedAsset->update([
             'status'    => 'available',
             'condition' => $validated['asset_condition'] ?? $assetMaintenance->fixedAsset->condition,
@@ -110,6 +121,15 @@ class AssetMaintenanceController extends Controller
 
     public function destroy(AssetMaintenance $assetMaintenance): JsonResponse
     {
+        if ($assetMaintenance->status === 'in_progress') {
+            return $this->errorResponse('Cannot delete an in-progress maintenance record', 422);
+        }
+
+        // If pending, restore asset status to available
+        if ($assetMaintenance->status === 'pending') {
+            $assetMaintenance->fixedAsset->update(['status' => 'available']);
+        }
+
         $assetMaintenance->delete();
         return $this->successResponse(null, 'Maintenance record deleted successfully');
     }

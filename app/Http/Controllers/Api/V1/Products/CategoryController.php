@@ -59,9 +59,13 @@ class CategoryController extends Controller
         return $this->successResponse($category, 'Category updated successfully');
     }
 
-    public function destroy(Category $category): JsonResponse
-    {
-        $category->delete();
-        return $this->successResponse(null, 'Category deleted successfully');
+   public function destroy(Category $category): JsonResponse
+{
+    if ($category->products()->exists()) {
+        return $this->errorResponse('Cannot delete category with existing products', 422);
     }
+
+    $category->delete();
+    return $this->successResponse(null, 'Category deleted successfully');
+}
 }

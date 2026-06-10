@@ -59,9 +59,13 @@ class BrandController extends Controller
         return $this->successResponse($brand, 'Brand updated successfully');
     }
 
-    public function destroy(Brand $brand): JsonResponse
-    {
-        $brand->delete();
-        return $this->successResponse(null, 'Brand deleted successfully');
+public function destroy(Brand $brand): JsonResponse
+{
+    if ($brand->products()->exists()) {
+        return $this->errorResponse('Cannot delete brand with existing products', 422);
     }
+
+    $brand->delete();
+    return $this->successResponse(null, 'Brand deleted successfully');
+}
 }

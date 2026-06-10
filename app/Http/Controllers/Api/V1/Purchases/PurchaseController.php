@@ -20,7 +20,7 @@ class PurchaseController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $purchases = Purchase::with(['supplier', 'warehouse', 'createdBy'])
+        $purchases = Purchase::with(['supplier', 'warehouse', 'createdBy', 'items'])
             ->latest()
             ->paginate($request->per_page ?? 15);
 
@@ -34,13 +34,23 @@ class PurchaseController extends Controller
             'warehouse_id'              => ['required', 'exists:warehouses,id'],
             'note'                      => ['nullable', 'string'],
             'items'                     => ['required', 'array', 'min:1'],
-            'items.*.product_id'        => ['nullable', 'exists:products,id'],
             'items.*.product_type'      => ['required', 'in:consumable,fixed_asset'],
+            'items.*.product_id'        => ['nullable', 'exists:products,id'],
             'items.*.asset_name'        => ['nullable', 'string'],
             'items.*.asset_category_id' => ['nullable', 'exists:asset_categories,id'],
             'items.*.quantity'          => ['required', 'integer', 'min:1'],
             'items.*.unit_price'        => ['required', 'numeric', 'min:0'],
         ]);
+
+        // Cross-validation: consumable needs product_id, fixed_asset needs asset_name
+        foreach ($validated['items'] as $index => $item) {
+            if ($item['product_type'] === 'consumable' && empty($item['product_id'])) {
+                return $this->errorResponse("Item #" . ($index + 1) . ": product_id is required for consumable items", 422);
+            }
+            if ($item['product_type'] === 'fixed_asset' && empty($item['asset_name'])) {
+                return $this->errorResponse("Item #" . ($index + 1) . ": asset_name is required for fixed asset items", 422);
+            }
+        }
 
         DB::beginTransaction();
         try {
@@ -57,14 +67,14 @@ class PurchaseController extends Controller
 
             foreach ($validated['items'] as $item) {
                 PurchaseItem::create([
-                    'purchase_id'        => $purchase->id,
-                    'product_id'         => $item['product_id'] ?? null,
-                    'product_type'       => $item['product_type'],
-                    'asset_name'         => $item['asset_name'] ?? null,
-                    'asset_category_id'  => $item['asset_category_id'] ?? null,
-                    'quantity'           => $item['quantity'],
-                    'unit_price'         => $item['unit_price'],
-                    'total_price'        => $item['quantity'] * $item['unit_price'],
+                    'purchase_id'       => $purchase->id,
+                    'product_id'        => $item['product_id'] ?? null,
+                    'product_type'      => $item['product_type'],
+                    'asset_name'        => $item['asset_name'] ?? null,
+                    'asset_category_id' => $item['asset_category_id'] ?? null,
+                    'quantity'          => $item['quantity'],
+                    'unit_price'        => $item['unit_price'],
+                    'total_price'       => $item['quantity'] * $item['unit_price'],
                 ]);
             }
 
@@ -89,7 +99,7 @@ class PurchaseController extends Controller
     public function receive(Purchase $purchase): JsonResponse
     {
         if ($purchase->status === 'received') {
-            return $this->errorResponse('Purchase already received');
+            return $this->errorResponse('Purchase already received', 422);
         }
 
         DB::beginTransaction();
@@ -97,10 +107,9 @@ class PurchaseController extends Controller
             foreach ($purchase->items as $item) {
 
                 if ($item->product_type === 'fixed_asset') {
-                    // Fixed Asset auto-create
                     for ($i = 0; $i < $item->quantity; $i++) {
                         FixedAsset::create([
-                            'name'              => $item->asset_name ?? 'Asset',
+                            'name'              => $item->asset_name,
                             'asset_category_id' => $item->asset_category_id,
                             'supplier_id'       => $purchase->supplier_id,
                             'purchase_date'     => now()->toDateString(),
@@ -111,7 +120,6 @@ class PurchaseController extends Controller
                         ]);
                     }
                 } else {
-                    // Consumable Stock update
                     $stock = Stock::firstOrCreate(
                         ['product_id' => $item->product_id, 'warehouse_id' => $purchase->warehouse_id],
                         ['quantity' => 0]
@@ -144,6 +152,10 @@ class PurchaseController extends Controller
 
     public function destroy(Purchase $purchase): JsonResponse
     {
+        if ($purchase->status === 'received') {
+            return $this->errorResponse('Cannot delete a received purchase', 422);
+        }
+
         $purchase->delete();
         return $this->successResponse(null, 'Purchase deleted successfully');
     }

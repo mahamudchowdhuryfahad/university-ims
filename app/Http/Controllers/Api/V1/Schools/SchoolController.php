@@ -59,6 +59,10 @@ class SchoolController extends Controller
 
     public function destroy(School $school): JsonResponse
     {
+        if ($school->departments()->exists()) {
+            return $this->errorResponse('Cannot delete school with existing departments', 422);
+        }
+
         $school->delete();
         return $this->successResponse(null, 'School deleted successfully');
     }

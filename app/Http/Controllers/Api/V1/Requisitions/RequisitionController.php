@@ -19,6 +19,7 @@ class RequisitionController extends Controller
         $requisitions = Requisition::with(['department', 'requestedBy', 'items.product'])
             ->when($request->status, fn($q, $s) => $q->where('status', $s))
             ->when($request->type, fn($q, $t) => $q->where('type', $t))
+            ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
             ->latest()
             ->paginate($request->per_page ?? 15);
 
@@ -28,13 +29,13 @@ class RequisitionController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'department_id'          => ['required', 'exists:departments,id'],
-            'type'                   => ['required', 'in:consumable,fixed_asset'],
-            'request_date'           => ['required', 'date'],
-            'required_date'          => ['nullable', 'date'],
-            'purpose'                => ['nullable', 'string'],
-            'items'                  => ['required', 'array', 'min:1'],
-            'items.*.product_id'     => ['required', 'exists:products,id'],
+            'department_id'              => ['required', 'exists:departments,id'],
+            'type'                       => ['required', 'in:consumable,fixed_asset'],
+            'request_date'               => ['required', 'date'],
+            'required_date'              => ['nullable', 'date'],
+            'purpose'                    => ['nullable', 'string'],
+            'items'                      => ['required', 'array', 'min:1'],
+            'items.*.product_id'         => ['required', 'exists:products,id'],
             'items.*.requested_quantity' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -71,6 +72,10 @@ class RequisitionController extends Controller
 
     public function approve(Request $request, Requisition $requisition): JsonResponse
     {
+        if ($requisition->status !== 'pending') {
+            return $this->errorResponse('Only pending requisitions can be approved', 422);
+        }
+
         $validated = $request->validate([
             'remarks'                   => ['nullable', 'string'],
             'items'                     => ['required', 'array'],
@@ -79,9 +84,12 @@ class RequisitionController extends Controller
         ]);
 
         foreach ($validated['items'] as $item) {
-            RequisitionItem::find($item['id'])->update([
-                'approved_quantity' => $item['approved_quantity'],
-            ]);
+            $reqItem = RequisitionItem::find($item['id']);
+
+            // approved_quantity cannot exceed requested_quantity
+            $approvedQty = min($item['approved_quantity'], $reqItem->requested_quantity);
+
+            $reqItem->update(['approved_quantity' => $approvedQty]);
         }
 
         $requisition->update([
@@ -96,6 +104,14 @@ class RequisitionController extends Controller
 
     public function reject(Request $request, Requisition $requisition): JsonResponse
     {
+        if (!in_array($requisition->status, ['pending', 'approved'])) {
+            return $this->errorResponse('Only pending or approved requisitions can be rejected', 422);
+        }
+
+        $request->validate([
+            'remarks' => ['required', 'string'],
+        ]);
+
         $requisition->update([
             'status'  => 'rejected',
             'remarks' => $request->remarks,
@@ -106,6 +122,10 @@ class RequisitionController extends Controller
 
     public function fulfill(Request $request, Requisition $requisition): JsonResponse
     {
+        if ($requisition->status !== 'approved') {
+            return $this->errorResponse('Only approved requisitions can be fulfilled', 422);
+        }
+
         $validated = $request->validate([
             'items'                      => ['required', 'array'],
             'items.*.id'                 => ['required', 'exists:requisition_items,id'],
@@ -113,9 +133,12 @@ class RequisitionController extends Controller
         ]);
 
         foreach ($validated['items'] as $item) {
-            RequisitionItem::find($item['id'])->update([
-                'fulfilled_quantity' => $item['fulfilled_quantity'],
-            ]);
+            $reqItem = RequisitionItem::find($item['id']);
+
+            // fulfilled_quantity cannot exceed approved_quantity
+            $fulfilledQty = min($item['fulfilled_quantity'], $reqItem->approved_quantity);
+
+            $reqItem->update(['fulfilled_quantity' => $fulfilledQty]);
         }
 
         $requisition->update(['status' => 'fulfilled']);

@@ -57,6 +57,10 @@ class BuildingController extends Controller
 
     public function destroy(Building $building): JsonResponse
     {
+        if ($building->rooms()->exists()) {
+            return $this->errorResponse('Cannot delete building with existing rooms', 422);
+        }
+
         $building->delete();
         return $this->successResponse(null, 'Building deleted successfully');
     }

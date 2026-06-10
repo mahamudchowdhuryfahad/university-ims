@@ -56,6 +56,10 @@ class AssetCategoryController extends Controller
 
     public function destroy(AssetCategory $assetCategory): JsonResponse
     {
+        if ($assetCategory->fixedAssets()->exists()) {
+            return $this->errorResponse('Cannot delete category with existing assets', 422);
+        }
+
         $assetCategory->delete();
         return $this->successResponse(null, 'Asset category deleted successfully');
     }

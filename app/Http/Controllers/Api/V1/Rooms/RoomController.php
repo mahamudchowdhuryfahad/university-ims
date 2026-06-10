@@ -25,20 +25,20 @@ class RoomController extends Controller
     }
 
     public function store(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'name'          => ['required', 'string'],
-            'room_number'   => ['required', 'string'],
-            'building_id'   => ['required', 'exists:buildings,id'],
-            'department_id' => ['nullable', 'exists:departments,id'],
-            'floor'         => ['nullable', 'integer'],
-            'type'          => ['nullable', 'string'],
-            'is_active'     => ['boolean'],
-        ]);
+{
+    $validated = $request->validate([
+        'name'          => ['required', 'string'],
+        'room_number'   => ['required', 'string'],
+        'building_id'   => ['required', 'exists:buildings,id'],
+        'department_id' => ['nullable', 'exists:departments,id'],
+        'floor'         => ['nullable', 'integer'],
+        'type'          => ['nullable', 'in:office,lab,classroom,store'],
+        'is_active'     => ['boolean'],
+    ]);
 
-        $room = Room::create($validated);
-        return $this->createdResponse($room->load(['building', 'department']), 'Room created successfully');
-    }
+    $room = Room::create($validated);
+    return $this->createdResponse($room->load(['building', 'department']), 'Room created successfully');
+}
 
     public function show(Room $room): JsonResponse
     {
@@ -46,24 +46,28 @@ class RoomController extends Controller
     }
 
     public function update(Request $request, Room $room): JsonResponse
-    {
-        $validated = $request->validate([
-            'name'          => ['sometimes', 'string'],
-            'room_number'   => ['sometimes', 'string'],
-            'building_id'   => ['sometimes', 'exists:buildings,id'],
-            'department_id' => ['nullable', 'exists:departments,id'],
-            'floor'         => ['nullable', 'integer'],
-            'type'          => ['nullable', 'string'],
-            'is_active'     => ['boolean'],
-        ]);
+{
+    $validated = $request->validate([
+        'name'          => ['sometimes', 'string'],
+        'room_number'   => ['sometimes', 'string'],
+        'building_id'   => ['sometimes', 'exists:buildings,id'],
+        'department_id' => ['nullable', 'exists:departments,id'],
+        'floor'         => ['nullable', 'integer'],
+        'type'          => ['nullable', 'in:office,lab,classroom,store'],
+        'is_active'     => ['boolean'],
+    ]);
 
-        $room->update($validated);
-        return $this->successResponse($room->fresh(['building', 'department']), 'Room updated successfully');
+    $room->update($validated);
+    return $this->successResponse($room->fresh(['building', 'department']), 'Room updated successfully');
+}
+
+  public function destroy(Room $room): JsonResponse
+{
+    if ($room->fixedAssets()->exists()) {
+        return $this->errorResponse('Cannot delete room with assigned assets', 422);
     }
 
-    public function destroy(Room $room): JsonResponse
-    {
-        $room->delete();
-        return $this->successResponse(null, 'Room deleted successfully');
-    }
+    $room->delete();
+    return $this->successResponse(null, 'Room deleted successfully');
+}
 }

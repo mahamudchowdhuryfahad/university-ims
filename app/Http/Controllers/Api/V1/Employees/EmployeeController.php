@@ -24,20 +24,20 @@ class EmployeeController extends Controller
     }
 
     public function store(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'name'          => ['required', 'string'],
-            'employee_id'   => ['required', 'string', 'unique:employees'],
-            'email'         => ['nullable', 'email', 'unique:employees'],
-            'phone'         => ['nullable', 'string'],
-            'designation'   => ['nullable', 'string'],
-            'department_id' => ['nullable', 'exists:departments,id'],
-            'status'        => ['nullable', 'string'],
-        ]);
+{
+    $validated = $request->validate([
+        'name'          => ['required', 'string'],
+        'employee_id'   => ['required', 'string', 'unique:employees'],
+        'email'         => ['nullable', 'email', 'unique:employees'],
+        'phone'         => ['nullable', 'string'],
+        'designation'   => ['nullable', 'string'],
+        'department_id' => ['nullable', 'exists:departments,id'],
+        'status'        => ['nullable', 'in:active,inactive,resigned'],
+    ]);
 
-        $employee = Employee::create($validated);
-        return $this->createdResponse($employee->load('department'), 'Employee created successfully');
-    }
+    $employee = Employee::create($validated);
+    return $this->createdResponse($employee->load('department'), 'Employee created successfully');
+}
 
     public function show(Employee $employee): JsonResponse
     {
@@ -45,24 +45,28 @@ class EmployeeController extends Controller
     }
 
     public function update(Request $request, Employee $employee): JsonResponse
-    {
-        $validated = $request->validate([
-            'name'          => ['sometimes', 'string'],
-            'employee_id'   => ['sometimes', 'string', 'unique:employees,employee_id,' . $employee->id],
-            'email'         => ['nullable', 'email', 'unique:employees,email,' . $employee->id],
-            'phone'         => ['nullable', 'string'],
-            'designation'   => ['nullable', 'string'],
-            'department_id' => ['nullable', 'exists:departments,id'],
-            'status'        => ['nullable', 'string'],
-        ]);
+{
+    $validated = $request->validate([
+        'name'          => ['sometimes', 'string'],
+        'employee_id'   => ['sometimes', 'string', 'unique:employees,employee_id,' . $employee->id],
+        'email'         => ['nullable', 'email', 'unique:employees,email,' . $employee->id],
+        'phone'         => ['nullable', 'string'],
+        'designation'   => ['nullable', 'string'],
+        'department_id' => ['nullable', 'exists:departments,id'],
+        'status'        => ['nullable', 'in:active,inactive,resigned'],
+    ]);
 
-        $employee->update($validated);
-        return $this->successResponse($employee->fresh('department'), 'Employee updated successfully');
+    $employee->update($validated);
+    return $this->successResponse($employee->fresh('department'), 'Employee updated successfully');
+}
+
+public function destroy(Employee $employee): JsonResponse
+{
+    if ($employee->fixedAssets()->exists()) {
+        return $this->errorResponse('Cannot delete employee with assigned assets', 422);
     }
 
-    public function destroy(Employee $employee): JsonResponse
-    {
-        $employee->delete();
-        return $this->successResponse(null, 'Employee deleted successfully');
-    }
+    $employee->delete();
+    return $this->successResponse(null, 'Employee deleted successfully');
+}
 }

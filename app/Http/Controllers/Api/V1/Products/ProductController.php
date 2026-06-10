@@ -14,24 +14,24 @@ class ProductController extends Controller
     use ApiResponseTrait;
 
     public function index(Request $request): JsonResponse
-    {
-        $products = Product::with(['category', 'brand'])
-            ->withSum('stock', 'quantity')
-            ->when($request->search, fn($q, $s) => $q->search($s))
-            ->when($request->category_id, fn($q, $id) => $q->where('category_id', $id))
-            ->when($request->is_active, fn($q, $v) => $q->where('is_active', $v))
-            ->latest()
-            ->paginate($request->per_page ?? 15);
+{
+    $products = Product::with(['category', 'brand'])
+        ->withSum('stock', 'quantity')
+        ->when($request->search, fn($q, $s) => $q->search($s))
+        ->when($request->category_id, fn($q, $id) => $q->where('category_id', $id))
+        ->when($request->has('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
+        ->latest()
+        ->paginate($request->per_page ?? 15);
 
-        $products->getCollection()->transform(function ($product) {
-            $product->total_stock = (int) ($product->stock_sum_quantity ?? 0);
-            $product->is_low_stock = $product->total_stock <= $product->alert_quantity;
-            $product->image_url = $product->image ? asset('storage/' . $product->image) : asset('images/no-product.png');
-            return $product;
-        });
+    $products->getCollection()->transform(function ($product) {
+        $product->total_stock = (int) ($product->stock_sum_quantity ?? 0);
+        $product->is_low_stock = $product->total_stock <= $product->alert_quantity;
+        $product->image_url = $product->image ? asset('storage/' . $product->image) : asset('images/no-product.png');
+        return $product;
+    });
 
-        return $this->successResponse($products);
-    }
+    return $this->successResponse($products);
+}
 
     public function store(Request $request): JsonResponse
     {
@@ -99,8 +99,12 @@ class ProductController extends Controller
     }
 
     public function destroy(Product $product): JsonResponse
-    {
-        $product->delete();
-        return $this->successResponse(null, 'Product deleted successfully');
+{
+    if ($product->stock()->where('quantity', '>', 0)->exists()) {
+        return $this->errorResponse('Cannot delete product with existing stock', 422);
     }
+
+    $product->delete();
+    return $this->successResponse(null, 'Product deleted successfully');
+}
 }

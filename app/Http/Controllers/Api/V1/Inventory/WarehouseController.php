@@ -62,8 +62,12 @@ class WarehouseController extends Controller
     }
 
     public function destroy(Warehouse $warehouse): JsonResponse
-    {
-        $warehouse->delete();
-        return $this->successResponse(null, 'Warehouse deleted successfully');
+{
+    if ($warehouse->stock()->where('quantity', '>', 0)->exists()) {
+        return $this->errorResponse('Cannot delete warehouse with existing stock', 422);
     }
+
+    $warehouse->delete();
+    return $this->successResponse(null, 'Warehouse deleted successfully');
+}
 }

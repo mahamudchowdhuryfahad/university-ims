@@ -14,15 +14,15 @@ class UserController extends Controller
     use ApiResponseTrait;
 
     public function index(Request $request): JsonResponse
-{
-    $users = User::with('roles')
-        ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"))
-        ->when($request->is_active !== null, fn($q) => $q->where('is_active', $request->is_active))
-        ->latest()
-        ->paginate($request->per_page ?? 15);
+    {
+        $users = User::with('roles')
+            ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('email', 'like', "%{$s}%"))
+            ->when($request->has('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
+            ->latest()
+            ->paginate($request->per_page ?? 15);
 
-    return $this->successResponse($users);
-}
+        return $this->successResponse($users);
+    }
 
     public function store(Request $request): JsonResponse
     {
@@ -30,7 +30,7 @@ class UserController extends Controller
             'name'      => ['required', 'string'],
             'email'     => ['required', 'email', 'unique:users'],
             'password'  => ['required', 'min:8'],
-            'role'      => ['nullable', 'string'],
+            'role'      => ['nullable', 'string', 'in:staff,fixed-asset-admin,consumable-admin,super-admin'],
             'is_active' => ['boolean'],
         ]);
 
@@ -59,7 +59,7 @@ class UserController extends Controller
             'name'      => ['sometimes', 'string'],
             'email'     => ['sometimes', 'email', 'unique:users,email,' . $user->id],
             'password'  => ['nullable', 'min:8'],
-            'role'      => ['nullable', 'string'],
+            'role'      => ['nullable', 'string', 'in:staff,fixed-asset-admin,consumable-admin,super-admin'],
             'is_active' => ['boolean'],
         ]);
 
@@ -69,7 +69,12 @@ class UserController extends Controller
             unset($validated['password']);
         }
 
-        $user->update($validated);
+        // Don't allow deactivating own account
+        if (isset($validated['is_active']) && !$validated['is_active'] && $user->id === auth()->id()) {
+            return $this->errorResponse('Cannot deactivate your own account', 422);
+        }
+
+        $user->update(collect($validated)->except('role')->toArray());
 
         if (!empty($validated['role'])) {
             $user->syncRoles([$validated['role']]);
@@ -80,24 +85,33 @@ class UserController extends Controller
 
     public function destroy(User $user): JsonResponse
     {
+        if ($user->id === auth()->id()) {
+            return $this->errorResponse('Cannot delete your own account', 422);
+        }
+
         $user->delete();
         return $this->successResponse(null, 'User deleted successfully');
     }
 
     public function toggleStatus(User $user): JsonResponse
     {
+        if ($user->id === auth()->id()) {
+            return $this->errorResponse('Cannot deactivate your own account', 422);
+        }
+
         $user->update(['is_active' => !$user->is_active]);
         return $this->successResponse($user, 'User status updated successfully');
     }
+
     public function approve(Request $request, User $user): JsonResponse
-{
-$validated = $request->validate([
-'role' => ['required', 'string'],
-]);
+    {
+        $validated = $request->validate([
+            'role' => ['required', 'string', 'in:staff,fixed-asset-admin,consumable-admin,super-admin'],
+        ]);
 
-$user->syncRoles([$validated['role']]);
-$user->update(['is_active' => true]);
+        $user->syncRoles([$validated['role']]);
+        $user->update(['is_active' => true]);
 
-return $this->successResponse($user->fresh('roles'), 'User approved successfully');
-}
+        return $this->successResponse($user->fresh('roles'), 'User approved successfully');
+    }
 }
