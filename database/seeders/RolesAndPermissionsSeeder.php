@@ -60,15 +60,16 @@ class RolesAndPermissionsSeeder extends Seeder
         }
 
         // Roles
-        $superAdmin       = Role::firstOrCreate(['name' => 'super-admin']);
-        $fixedAssetAdmin  = Role::firstOrCreate(['name' => 'fixed-asset-admin']);
-        $consumableAdmin  = Role::firstOrCreate(['name' => 'consumable-admin']);
-        $requester        = Role::firstOrCreate(['name' => 'requester']);
+        $superAdmin      = Role::firstOrCreate(['name' => 'super-admin']);
+        $fixedAssetAdmin = Role::firstOrCreate(['name' => 'fixed-asset-admin']);
+        $consumableAdmin = Role::firstOrCreate(['name' => 'consumable-admin']);
+        $storeAdmin      = Role::firstOrCreate(['name' => 'store-admin']);
+        $requester       = Role::firstOrCreate(['name' => 'requester']);
 
-        // Super Admin — সব কিছু
+        // Super Admin — all permissions
         $superAdmin->syncPermissions(Permission::all());
 
-        // Fixed Asset Admin — Fixed asset সব + university structure view + requisition fulfill
+        // Fixed Asset Admin — Fixed asset + university structure view + requisition approve/fulfill
         $fixedAssetAdmin->syncPermissions([
             'view_dashboard',
             'view_schools', 'view_departments', 'view_buildings', 'view_rooms', 'view_employees',
@@ -82,7 +83,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_reports',
         ]);
 
-        // Consumable Admin — Consumable সব + requisition approve/fulfill
+        // Consumable Admin — Consumable + requisition approve/fulfill
         $consumableAdmin->syncPermissions([
             'view_dashboard',
             'view_products', 'create_products', 'edit_products', 'delete_products',
@@ -96,7 +97,26 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_reports',
         ]);
 
-        // Requester — requisition create + view dashboard
+        // Store Admin — Consumable + Fixed asset (except delete) + university structure view + requisition view
+        $storeAdmin->syncPermissions([
+            'view_dashboard',
+            'view_products', 'create_products', 'edit_products', 'delete_products',
+            'view_categories', 'create_categories', 'edit_categories', 'delete_categories',
+            'view_brands', 'create_brands', 'edit_brands', 'delete_brands',
+            'view_suppliers', 'create_suppliers', 'edit_suppliers', 'delete_suppliers',
+            'view_warehouses', 'create_warehouses', 'edit_warehouses', 'delete_warehouses',
+            'view_stock', 'adjust_stock',
+            'view_purchases', 'create_purchases', 'receive_purchases',
+            'view_schools', 'view_departments', 'view_buildings', 'view_rooms', 'view_employees',
+            'view_fixed_assets', 'create_fixed_assets', 'edit_fixed_assets', 'delete_fixed_assets',
+            'assign_fixed_assets', 'transfer_fixed_assets', 'distribute_fixed_assets',
+            'maintain_fixed_assets', 'dispose_fixed_assets',
+            'view_asset_categories', 'create_asset_categories', 'edit_asset_categories', 'delete_asset_categories',
+            'view_requisitions',
+            'view_reports',
+        ]);
+
+        // Requester — requisition create  + requisition status + dashboard stats
         $requester->syncPermissions([
             'view_dashboard',
             'view_requisitions', 'create_requisitions',

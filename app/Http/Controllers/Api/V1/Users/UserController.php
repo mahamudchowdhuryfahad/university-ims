@@ -30,7 +30,7 @@ class UserController extends Controller
             'name'      => ['required', 'string'],
             'email'     => ['required', 'email', 'unique:users'],
             'password'  => ['required', 'min:8'],
-            'role'      => ['nullable', 'string', 'in:requester,fixed-asset-admin,consumable-admin,super-admin'],
+            'role'      => ['nullable', 'string', 'in:requester,fixed-asset-admin,consumable-admin,store-admin,super-admin'],
             'is_active' => ['boolean'],
         ]);
 
@@ -59,7 +59,7 @@ class UserController extends Controller
             'name'      => ['sometimes', 'string'],
             'email'     => ['sometimes', 'email', 'unique:users,email,' . $user->id],
             'password'  => ['nullable', 'min:8'],
-            'role'      => ['nullable', 'string', 'in:requester,fixed-asset-admin,consumable-admin,super-admin'],
+            'role'      => ['nullable', 'string', 'in:requester,fixed-asset-admin,consumable-admin,store-admin,super-admin'],
             'is_active' => ['boolean'],
         ]);
 
@@ -106,7 +106,7 @@ class UserController extends Controller
     public function approve(Request $request, User $user): JsonResponse
     {
         $validated = $request->validate([
-            'role' => ['required', 'string', 'in:requester,fixed-asset-admin,consumable-admin,super-admin'],
+            'role' => ['required', 'string', 'in:requester,fixed-asset-admin,consumable-admin,store-admin,super-admin'],
         ]);
 
         $user->syncRoles([$validated['role']]);
