@@ -16,7 +16,6 @@ class AssetApprovalController extends Controller
 {
     use ApiResponseTrait;
 
-    // List all pending approvals (for fixed-asset-admin)
     public function index(Request $request): JsonResponse
     {
         $approvals = AssetApproval::with(['fixedAsset.assetCategory', 'requestedBy'])
@@ -28,20 +27,18 @@ class AssetApprovalController extends Controller
         return $this->successResponse($approvals);
     }
 
-    // store-admin requests assign approval
     public function requestAssign(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
         if (!in_array($fixedAsset->status, ['in_store', 'available'])) {
             return $this->errorResponse('Asset is not available for assignment', 422);
         }
 
-        // Check if already pending approval
         if ($fixedAsset->approvals()->where('status', 'pending')->exists()) {
             return $this->errorResponse('Asset already has a pending approval request', 422);
         }
 
         $validated = $request->validate([
-            'employee_id'   => ['nullable', 'exists:employees,id'],
+            'employee_id'   => ['required', 'exists:employees,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
             'room_id'       => ['nullable', 'exists:rooms,id'],
             'notes'         => ['nullable', 'string'],
@@ -52,10 +49,11 @@ class AssetApprovalController extends Controller
             'requested_by'   => auth()->id(),
             'action'         => 'assign',
             'status'         => 'pending',
-            'payload'        => $validated,
+            'payload'        => array_merge($validated, [
+                'original_status' => $fixedAsset->status, // ← restore এর জন্য
+            ]),
         ]);
 
-        // Mark asset as pending
         $fixedAsset->update(['status' => 'pending_approval']);
 
         return $this->createdResponse(
@@ -64,7 +62,6 @@ class AssetApprovalController extends Controller
         );
     }
 
-    // store-admin requests transfer approval
     public function requestTransfer(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
         if (!in_array($fixedAsset->status, ['assigned', 'available'])) {
@@ -92,6 +89,7 @@ class AssetApprovalController extends Controller
                 'from_department_id' => $fixedAsset->department_id,
                 'from_room_id'       => $fixedAsset->room_id,
                 'from_employee_id'   => $fixedAsset->employee_id,
+                'original_status'    => $fixedAsset->status, // ← restore এর জন্য
             ]),
         ]);
 
@@ -103,7 +101,6 @@ class AssetApprovalController extends Controller
         );
     }
 
-    // store-admin requests distribute approval
     public function requestDistribute(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
         if ($fixedAsset->status !== 'in_store') {
@@ -125,7 +122,9 @@ class AssetApprovalController extends Controller
             'requested_by'   => auth()->id(),
             'action'         => 'distribute',
             'status'         => 'pending',
-            'payload'        => $validated,
+            'payload'        => array_merge($validated, [
+                'original_status' => $fixedAsset->status, // ← restore এর জন্য
+            ]),
         ]);
 
         $fixedAsset->update(['status' => 'pending_approval']);
@@ -136,7 +135,6 @@ class AssetApprovalController extends Controller
         );
     }
 
-    // fixed-asset-admin approves
     public function approve(Request $request, AssetApproval $assetApproval): JsonResponse
     {
         if ($assetApproval->status !== 'pending') {
@@ -153,6 +151,10 @@ class AssetApprovalController extends Controller
             $payload = $assetApproval->payload;
 
             if ($assetApproval->action === 'assign') {
+                AssetAssignment::where('fixed_asset_id', $asset->id)
+                    ->where('status', 'active')
+                    ->update(['status' => 'returned', 'return_date' => now()]);
+
                 AssetAssignment::create([
                     'fixed_asset_id' => $asset->id,
                     'employee_id'    => $payload['employee_id'] ?? null,
@@ -188,8 +190,8 @@ class AssetApprovalController extends Controller
                 ]);
 
                 $asset->update([
-                    'status'        => 'assigned',
-                    'department_id' => $payload['to_department_id'] ?? null,
+                    'status'        => $payload['to_employee_id'] ? 'assigned' : 'available',
+                    'department_id' => $payload['to_department_id'] ?? $asset->department_id,
                     'room_id'       => $payload['to_room_id'] ?? null,
                     'employee_id'   => $payload['to_employee_id'] ?? null,
                 ]);
@@ -218,7 +220,6 @@ class AssetApprovalController extends Controller
         }
     }
 
-    // fixed-asset-admin rejects
     public function reject(Request $request, AssetApproval $assetApproval): JsonResponse
     {
         if ($assetApproval->status !== 'pending') {
@@ -229,8 +230,9 @@ class AssetApprovalController extends Controller
             'remarks' => ['required', 'string'],
         ]);
 
-        // Restore asset status
-        $assetApproval->fixedAsset->update(['status' => 'in_store']);
+        // Restore original status from payload
+        $originalStatus = $assetApproval->payload['original_status'] ?? 'in_store';
+        $assetApproval->fixedAsset->update(['status' => $originalStatus]);
 
         $assetApproval->update([
             'status'      => 'rejected',
