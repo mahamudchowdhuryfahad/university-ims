@@ -48,6 +48,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_fixed_assets', 'create_fixed_assets', 'edit_fixed_assets', 'delete_fixed_assets',
             'assign_fixed_assets', 'transfer_fixed_assets', 'distribute_fixed_assets',
             'maintain_fixed_assets', 'dispose_fixed_assets',
+            'approve_fixed_assets', // ← new
             'view_asset_categories', 'create_asset_categories', 'edit_asset_categories', 'delete_asset_categories',
 
             // Requisitions
@@ -69,7 +70,7 @@ class RolesAndPermissionsSeeder extends Seeder
         // Super Admin — all permissions
         $superAdmin->syncPermissions(Permission::all());
 
-        // Fixed Asset Admin — Fixed asset + university structure view + requisition approve/fulfill
+        // Fixed Asset Admin — Fixed asset all + approve + university structure + requisition
         $fixedAssetAdmin->syncPermissions([
             'view_dashboard',
             'view_schools', 'view_departments', 'view_buildings', 'view_rooms', 'view_employees',
@@ -78,12 +79,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_fixed_assets', 'create_fixed_assets', 'edit_fixed_assets', 'delete_fixed_assets',
             'assign_fixed_assets', 'transfer_fixed_assets', 'distribute_fixed_assets',
             'maintain_fixed_assets', 'dispose_fixed_assets',
+            'approve_fixed_assets', // ← fixed-asset-admin approve 
             'view_asset_categories', 'create_asset_categories', 'edit_asset_categories', 'delete_asset_categories',
             'view_requisitions', 'approve_requisitions', 'reject_requisitions', 'fulfill_requisitions',
             'view_reports',
         ]);
 
-        // Consumable Admin — Consumable + requisition approve/fulfill
+        // Consumable Admin — Consumable all + requisition approve/fulfill
         $consumableAdmin->syncPermissions([
             'view_dashboard',
             'view_products', 'create_products', 'edit_products', 'delete_products',
@@ -97,7 +99,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_reports',
         ]);
 
-        // Store Admin — Consumable + Fixed asset (except delete) + university structure view + requisition view
+        // Store Admin — all manage but not approve
         $storeAdmin->syncPermissions([
             'view_dashboard',
             'view_products', 'create_products', 'edit_products', 'delete_products',
@@ -111,12 +113,14 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_fixed_assets', 'create_fixed_assets', 'edit_fixed_assets', 'delete_fixed_assets',
             'assign_fixed_assets', 'transfer_fixed_assets', 'distribute_fixed_assets',
             'maintain_fixed_assets', 'dispose_fixed_assets',
+            // approve_fixed_assets — store-admin cannot approve
+            'view_requisitions',
             'view_asset_categories', 'create_asset_categories', 'edit_asset_categories', 'delete_asset_categories',
             'view_requisitions',
             'view_reports',
         ]);
 
-        // Requester — requisition create  + requisition status + dashboard stats
+        // Requester — can only view dashboard, products, suppliers, and create requisitions
         $requester->syncPermissions([
             'view_dashboard',
             'view_requisitions', 'create_requisitions',

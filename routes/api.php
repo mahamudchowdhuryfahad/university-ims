@@ -5,6 +5,9 @@ use App\Http\Controllers\Api\V1\Buildings\BuildingController;
 use App\Http\Controllers\Api\V1\Dashboard\DashboardController;
 use App\Http\Controllers\Api\V1\Departments\DepartmentController;
 use App\Http\Controllers\Api\V1\Employees\EmployeeController;
+use App\Http\Controllers\Api\V1\FixedAssets\AssetApprovalController;
+use App\Http\Controllers\Api\V1\FixedAssets\AssetCategoryController;
+use App\Http\Controllers\Api\V1\FixedAssets\AssetMaintenanceController;
 use App\Http\Controllers\Api\V1\FixedAssets\FixedAssetController;
 use App\Http\Controllers\Api\V1\Inventory\StockController;
 use App\Http\Controllers\Api\V1\Inventory\WarehouseController;
@@ -18,8 +21,6 @@ use App\Http\Controllers\Api\V1\Rooms\RoomController;
 use App\Http\Controllers\Api\V1\Schools\SchoolController;
 use App\Http\Controllers\Api\V1\Suppliers\SupplierController;
 use App\Http\Controllers\Api\V1\Users\UserController;
-use App\Http\Controllers\Api\V1\FixedAssets\AssetCategoryController;
-use App\Http\Controllers\Api\V1\FixedAssets\AssetMaintenanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -131,6 +132,20 @@ Route::prefix('v1')->group(function () {
         });
         Route::middleware('permission:dispose_fixed_assets')->group(function () {
             Route::post('/fixed-assets/{fixedAsset}/dispose', [FixedAssetController::class, 'dispose']);
+        });
+
+        // Asset Approvals — store-admin requests, fixed-asset-admin approves/rejects
+        Route::middleware('permission:view_fixed_assets')->group(function () {
+            Route::get('/asset-approvals', [AssetApprovalController::class, 'index']);
+        });
+        Route::middleware('permission:assign_fixed_assets')->group(function () {
+            Route::post('/fixed-assets/{fixedAsset}/request-assign', [AssetApprovalController::class, 'requestAssign']);
+            Route::post('/fixed-assets/{fixedAsset}/request-transfer', [AssetApprovalController::class, 'requestTransfer']);
+            Route::post('/fixed-assets/{fixedAsset}/request-distribute', [AssetApprovalController::class, 'requestDistribute']);
+        });
+        Route::middleware('permission:approve_fixed_assets')->group(function () {
+            Route::patch('/asset-approvals/{assetApproval}/approve', [AssetApprovalController::class, 'approve']);
+            Route::patch('/asset-approvals/{assetApproval}/reject', [AssetApprovalController::class, 'reject']);
         });
 
         // Asset Maintenance

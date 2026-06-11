@@ -1,5 +1,7 @@
 <?php
+
 namespace App\Models;
+
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -8,13 +10,14 @@ use Illuminate\Support\Str;
 class FixedAsset extends Model
 {
     use HasFactory, SoftDeletes;
+
     protected $fillable = [
-    'asset_tag', 'name', 'serial_number', 'model',
-    'category_id', 'asset_category_id', 'brand_id', 'supplier_id', 'department_id',
-    'room_id', 'employee_id', 'purchase_date', 'purchase_cost',
-    'warranty_expiry', 'status', 'condition', 'description',
-    'image', 'created_by', 'location', 'quantity_in_store',
-];
+        'asset_tag', 'name', 'serial_number', 'model',
+        'asset_category_id', 'brand_id', 'supplier_id', 'department_id',
+        'room_id', 'employee_id', 'purchase_date', 'purchase_cost',
+        'warranty_expiry', 'status', 'condition', 'description',
+        'image', 'created_by',
+    ];
 
     protected static function boot()
     {
@@ -26,7 +29,7 @@ class FixedAsset extends Model
         });
     }
 
-    public function category() { return $this->belongsTo(Category::class); }
+    public function assetCategory() { return $this->belongsTo(AssetCategory::class, 'asset_category_id'); }
     public function brand() { return $this->belongsTo(Brand::class); }
     public function supplier() { return $this->belongsTo(Supplier::class); }
     public function department() { return $this->belongsTo(Department::class); }
@@ -37,5 +40,5 @@ class FixedAsset extends Model
     public function maintenances() { return $this->hasMany(AssetMaintenance::class); }
     public function disposal() { return $this->hasOne(DisposalRecord::class); }
     public function createdBy() { return $this->belongsTo(User::class, 'created_by'); }
-    public function assetCategory() { return $this->belongsTo(AssetCategory::class, 'asset_category_id'); }
+    public function approvals() { return $this->hasMany(AssetApproval::class); }
 }

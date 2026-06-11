@@ -252,6 +252,7 @@ class FixedAssetController extends Controller
             'in_store'          => FixedAsset::where('status', 'in_store')->count(),
             'available'         => FixedAsset::where('status', 'available')->count(),
             'assigned'          => FixedAsset::where('status', 'assigned')->count(),
+            'pending_approval'  => FixedAsset::where('status', 'pending_approval')->count(), // ← add
             'under_maintenance' => FixedAsset::where('status', 'under_maintenance')->count(),
             'total_transfers'   => AssetTransfer::count(),
             'disposed'          => FixedAsset::where('status', 'disposed')->count(),
