@@ -19,6 +19,6 @@ class AdminUserSeeder extends Seeder
             ]
         );
 
-        $user->assignRole('super-admin');
+        $user->syncRoles(['super-admin']);
     }
 }
