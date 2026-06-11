@@ -10,6 +10,7 @@ use App\Models\FixedAsset;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class FixedAssetController extends Controller
 {
@@ -32,7 +33,7 @@ class FixedAssetController extends Controller
         $validated = $request->validate([
             'name'              => ['required', 'string'],
             'quantity'          => ['nullable', 'integer', 'min:1'],
-            'serial_number'     => ['nullable', 'string'],
+            'serial_number'     => ['nullable', 'string', 'unique:fixed_assets,serial_number'],
             'model'             => ['nullable', 'string'],
             'asset_category_id' => ['nullable', 'exists:asset_categories,id'],
             'brand_id'          => ['nullable', 'exists:brands,id'],
@@ -75,7 +76,7 @@ class FixedAssetController extends Controller
     {
         $validated = $request->validate([
             'name'              => ['sometimes', 'string'],
-            'serial_number'     => ['nullable', 'string'],
+            'serial_number'     => ['nullable', 'string', Rule::unique('fixed_assets', 'serial_number')->ignore($fixedAsset->id)],
             'model'             => ['nullable', 'string'],
             'asset_category_id' => ['nullable', 'exists:asset_categories,id'],
             'brand_id'          => ['nullable', 'exists:brands,id'],
@@ -108,7 +109,6 @@ class FixedAssetController extends Controller
 
     public function assign(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
-        // store-admin must use request-assign instead
         if (auth()->user()->hasRole('store-admin')) {
             return $this->errorResponse('Store admin must submit an approval request for assignment', 403);
         }
@@ -172,7 +172,6 @@ class FixedAssetController extends Controller
 
     public function distribute(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
-        // store-admin must use request-distribute instead
         if (auth()->user()->hasRole('store-admin')) {
             return $this->errorResponse('Store admin must submit an approval request for distribution', 403);
         }
@@ -198,7 +197,6 @@ class FixedAssetController extends Controller
 
     public function transfer(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
-        // store-admin must use request-transfer instead
         if (auth()->user()->hasRole('store-admin')) {
             return $this->errorResponse('Store admin must submit an approval request for transfer', 403);
         }
