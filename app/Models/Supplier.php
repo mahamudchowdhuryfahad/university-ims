@@ -9,4 +9,5 @@ class Supplier extends Model
     use HasFactory, SoftDeletes;
     protected $fillable = ['name', 'email', 'phone', 'address', 'city', 'country', 'is_active'];
     protected $casts = ['is_active' => 'boolean'];
+    public function purchases() { return $this->hasMany(Purchase::class); }
 }

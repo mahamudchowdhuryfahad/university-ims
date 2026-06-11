@@ -12,4 +12,5 @@ class Room extends Model
 
     public function building() { return $this->belongsTo(Building::class); }
     public function department() { return $this->belongsTo(Department::class); }
+    public function fixedAssets() { return $this->hasMany(FixedAsset::class); } // For room-specific assets
 }

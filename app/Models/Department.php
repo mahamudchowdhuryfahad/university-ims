@@ -13,4 +13,5 @@ class Department extends Model
     public function school() { return $this->belongsTo(School::class); }
     public function employees() { return $this->hasMany(Employee::class); }
     public function rooms() { return $this->hasMany(Room::class); }
+    public function fixedAssets() { return $this->hasMany(FixedAsset::class); } // For department-specific assets
 }

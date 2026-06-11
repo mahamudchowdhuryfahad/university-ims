@@ -11,4 +11,5 @@ class Employee extends Model
     protected $casts = ['is_active' => 'boolean'];
 
     public function department() { return $this->belongsTo(Department::class); }
+    public function fixedAssets() { return $this->hasMany(FixedAsset::class); }
 }
