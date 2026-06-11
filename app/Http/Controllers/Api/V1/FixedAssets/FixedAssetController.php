@@ -41,7 +41,7 @@ class FixedAssetController extends Controller
             'purchase_date'     => ['nullable', 'date'],
             'purchase_cost'     => ['nullable', 'numeric'],
             'warranty_expiry'   => ['nullable', 'date'],
-            'condition'         => ['nullable', 'string'],
+            'condition'         => ['nullable', 'in:good,fair,poor,damaged'],
             'description'       => ['nullable', 'string'],
         ]);
 
@@ -84,7 +84,7 @@ class FixedAssetController extends Controller
             'purchase_date'     => ['nullable', 'date'],
             'purchase_cost'     => ['nullable', 'numeric'],
             'warranty_expiry'   => ['nullable', 'date'],
-            'condition'         => ['nullable', 'string'],
+            'condition'         => ['nullable', 'in:good,fair,poor,damaged'],
             'description'       => ['nullable', 'string'],
         ]);
 
@@ -98,8 +98,8 @@ class FixedAssetController extends Controller
 
     public function destroy(FixedAsset $fixedAsset): JsonResponse
     {
-        if ($fixedAsset->status === 'assigned') {
-            return $this->errorResponse('Cannot delete an assigned asset', 422);
+        if (in_array($fixedAsset->status, ['assigned', 'pending_approval'])) {
+            return $this->errorResponse('Cannot delete an assigned or pending approval asset', 422);
         }
 
         $fixedAsset->delete();
@@ -108,6 +108,15 @@ class FixedAssetController extends Controller
 
     public function assign(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
+        // store-admin must use request-assign instead
+        if (auth()->user()->hasRole('store-admin')) {
+            return $this->errorResponse('Store admin must submit an approval request for assignment', 403);
+        }
+
+        if (!in_array($fixedAsset->status, ['available', 'in_store'])) {
+            return $this->errorResponse('Asset is not available for assignment', 422);
+        }
+
         $validated = $request->validate([
             'employee_id'   => ['required', 'exists:employees,id'],
             'department_id' => ['nullable', 'exists:departments,id'],
@@ -144,6 +153,10 @@ class FixedAssetController extends Controller
 
     public function return(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
+        if ($fixedAsset->status !== 'assigned') {
+            return $this->errorResponse('Only assigned assets can be returned', 422);
+        }
+
         AssetAssignment::where('fixed_asset_id', $fixedAsset->id)
             ->where('status', 'active')
             ->update(['status' => 'returned', 'return_date' => $request->return_date ?? now()]);
@@ -159,6 +172,15 @@ class FixedAssetController extends Controller
 
     public function distribute(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
+        // store-admin must use request-distribute instead
+        if (auth()->user()->hasRole('store-admin')) {
+            return $this->errorResponse('Store admin must submit an approval request for distribution', 403);
+        }
+
+        if ($fixedAsset->status !== 'in_store') {
+            return $this->errorResponse('Only in-store assets can be distributed', 422);
+        }
+
         $validated = $request->validate([
             'department_id' => ['required', 'exists:departments,id'],
             'room_id'       => ['nullable', 'exists:rooms,id'],
@@ -176,6 +198,15 @@ class FixedAssetController extends Controller
 
     public function transfer(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
+        // store-admin must use request-transfer instead
+        if (auth()->user()->hasRole('store-admin')) {
+            return $this->errorResponse('Store admin must submit an approval request for transfer', 403);
+        }
+
+        if (!in_array($fixedAsset->status, ['available', 'assigned'])) {
+            return $this->errorResponse('Asset cannot be transferred in its current status', 422);
+        }
+
         $validated = $request->validate([
             'to_department_id' => ['nullable', 'exists:departments,id'],
             'to_room_id'       => ['nullable', 'exists:rooms,id'],
@@ -222,10 +253,18 @@ class FixedAssetController extends Controller
 
     public function dispose(Request $request, FixedAsset $fixedAsset): JsonResponse
     {
+        if ($fixedAsset->status === 'disposed') {
+            return $this->errorResponse('Asset already disposed', 422);
+        }
+
+        if ($fixedAsset->status === 'pending_approval') {
+            return $this->errorResponse('Cannot dispose asset with pending approval', 422);
+        }
+
         $validated = $request->validate([
             'disposal_date'  => ['required', 'date'],
-            'method'         => ['required', 'string'],
-            'disposal_value' => ['nullable', 'numeric'],
+            'method'         => ['required', 'in:written_off,sold,donated,scrapped,damaged'],
+            'disposal_value' => ['nullable', 'numeric', 'min:0'],
             'reason'         => ['nullable', 'string'],
             'remarks'        => ['nullable', 'string'],
         ]);
@@ -252,7 +291,7 @@ class FixedAssetController extends Controller
             'in_store'          => FixedAsset::where('status', 'in_store')->count(),
             'available'         => FixedAsset::where('status', 'available')->count(),
             'assigned'          => FixedAsset::where('status', 'assigned')->count(),
-            'pending_approval'  => FixedAsset::where('status', 'pending_approval')->count(), // ← add
+            'pending_approval'  => FixedAsset::where('status', 'pending_approval')->count(),
             'under_maintenance' => FixedAsset::where('status', 'under_maintenance')->count(),
             'total_transfers'   => AssetTransfer::count(),
             'disposed'          => FixedAsset::where('status', 'disposed')->count(),
