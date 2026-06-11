@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Api\V1\Requisitions;
 use App\Http\Controllers\Controller;
 use App\Models\Requisition;
 use App\Models\RequisitionItem;
+use App\Models\Stock;
+use App\Models\StockMovement;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class RequisitionController extends Controller
@@ -85,10 +88,7 @@ class RequisitionController extends Controller
 
         foreach ($validated['items'] as $item) {
             $reqItem = RequisitionItem::find($item['id']);
-
-            // approved_quantity cannot exceed requested_quantity
             $approvedQty = min($item['approved_quantity'], $reqItem->requested_quantity);
-
             $reqItem->update(['approved_quantity' => $approvedQty]);
         }
 
@@ -132,17 +132,74 @@ class RequisitionController extends Controller
             'items.*.fulfilled_quantity' => ['required', 'integer', 'min:0'],
         ]);
 
-        foreach ($validated['items'] as $item) {
-            $reqItem = RequisitionItem::find($item['id']);
+        // consumable requisition হলে stock check করতে হবে
+        if ($requisition->type === 'consumable') {
+            foreach ($validated['items'] as $item) {
+                $reqItem = RequisitionItem::find($item['id']);
+                $fulfilledQty = min($item['fulfilled_quantity'], $reqItem->approved_quantity);
 
-            // fulfilled_quantity cannot exceed approved_quantity
-            $fulfilledQty = min($item['fulfilled_quantity'], $reqItem->approved_quantity);
+                if ($fulfilledQty <= 0) continue;
 
-            $reqItem->update(['fulfilled_quantity' => $fulfilledQty]);
+                // যেকোনো warehouse থেকে total stock check
+                $totalStock = Stock::where('product_id', $reqItem->product_id)->sum('quantity');
+                if ($totalStock < $fulfilledQty) {
+                    return $this->errorResponse(
+                        "Insufficient stock for product: {$reqItem->product->name}. Available: {$totalStock}, Required: {$fulfilledQty}",
+                        422
+                    );
+                }
+            }
         }
 
-        $requisition->update(['status' => 'fulfilled']);
+        DB::beginTransaction();
+        try {
+            foreach ($validated['items'] as $item) {
+                $reqItem = RequisitionItem::find($item['id']);
+                $fulfilledQty = min($item['fulfilled_quantity'], $reqItem->approved_quantity);
 
-        return $this->successResponse(null, 'Requisition fulfilled successfully');
+                $reqItem->update(['fulfilled_quantity' => $fulfilledQty]);
+
+                // consumable হলে stock deduct করো
+                if ($requisition->type === 'consumable' && $fulfilledQty > 0) {
+                    $remaining = $fulfilledQty;
+
+                    // FIFO — প্রথম warehouse থেকে stock কমাও
+                    $stocks = Stock::where('product_id', $reqItem->product_id)
+                        ->where('quantity', '>', 0)
+                        ->orderBy('id')
+                        ->get();
+
+                    foreach ($stocks as $stock) {
+                        if ($remaining <= 0) break;
+
+                        $deduct = min($remaining, $stock->quantity);
+                        $quantityBefore = $stock->quantity;
+                        $stock->decrement('quantity', $deduct);
+
+                        StockMovement::create([
+                            'product_id'      => $reqItem->product_id,
+                            'warehouse_id'    => $stock->warehouse_id,
+                            'type'            => 'requisition',
+                            'quantity'        => $deduct,
+                            'quantity_before' => $quantityBefore,
+                            'quantity_after'  => $stock->fresh()->quantity,
+                            'reference'       => $requisition->reference,
+                            'created_by'      => auth()->id(),
+                        ]);
+
+                        $remaining -= $deduct;
+                    }
+                }
+            }
+
+            $requisition->update(['status' => 'fulfilled']);
+
+            DB::commit();
+            return $this->successResponse(null, 'Requisition fulfilled successfully');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return $this->errorResponse($e->getMessage());
+        }
     }
 }
