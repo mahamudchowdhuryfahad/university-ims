@@ -77,6 +77,7 @@ class AssetApprovalController extends Controller
             'to_department_id' => ['nullable', 'exists:departments,id'],
             'to_room_id'       => ['nullable', 'exists:rooms,id'],
             'to_employee_id'   => ['nullable', 'exists:employees,id'],
+            'transfer_date'    => ['nullable', 'date'],
             'reason'           => ['nullable', 'string'],
             'notes'            => ['nullable', 'string'],
         ]);
@@ -219,7 +220,7 @@ class AssetApprovalController extends Controller
                     'to_room_id'         => $payload['to_room_id'] ?? null,
                     'from_employee_id'   => $payload['from_employee_id'] ?? null,
                     'to_employee_id'     => $payload['to_employee_id'] ?? null,
-                    'transfer_date'      => now()->toDateString(),
+                    'transfer_date'      => $payload['transfer_date'] ?? now()->toDateString(),
                     'reason'             => $payload['reason'] ?? null,
                     'notes'              => $payload['notes'] ?? null,
                     'status'             => 'completed',
@@ -227,7 +228,7 @@ class AssetApprovalController extends Controller
                 ]);
 
                 $asset->update([
-                    'status'        => $payload['to_employee_id'] ? 'assigned' : 'available',
+                    'status' => !empty($payload['to_employee_id']) ? 'assigned' : 'available',
                     'department_id' => $payload['to_department_id'] ?? $asset->department_id,
                     'room_id'       => $payload['to_room_id'] ?? null,
                     'employee_id'   => $payload['to_employee_id'] ?? null,

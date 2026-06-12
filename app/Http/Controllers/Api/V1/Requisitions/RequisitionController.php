@@ -32,15 +32,28 @@ class RequisitionController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'department_id'              => ['required', 'exists:departments,id'],
-            'type'                       => ['required', 'in:consumable,fixed_asset'],
-            'request_date'               => ['required', 'date'],
-            'required_date'              => ['nullable', 'date'],
-            'purpose'                    => ['nullable', 'string'],
-            'items'                      => ['required', 'array', 'min:1'],
-            'items.*.product_id'         => ['required', 'exists:products,id'],
-            'items.*.requested_quantity' => ['required', 'integer', 'min:1'],
+            'department_id' => ['required', 'exists:departments,id'],
+            'type'          => ['required', 'in:consumable,fixed_asset'],
+            'request_date'  => ['required', 'date'],
+            'required_date' => ['nullable', 'date'],
+            'purpose'       => ['nullable', 'string'],
+            'items'         => ['nullable', 'array'],
+            'items.*.product_id'         => ['nullable', 'exists:products,id'],
+            'items.*.item_description'   => ['nullable', 'string'],
+            'items.*.requested_quantity' => ['required_with:items.*', 'integer', 'min:1'],
         ]);
+
+        // Consumable এ items required
+        if ($validated['type'] === 'consumable') {
+            if (empty($validated['items'])) {
+                return $this->errorResponse('Items are required for consumable requisitions', 422);
+            }
+            foreach ($validated['items'] as $item) {
+                if (empty($item['product_id'])) {
+                    return $this->errorResponse('Product is required for each consumable item', 422);
+                }
+            }
+        }
 
         $requisition = Requisition::create([
             'reference'     => 'REQ-' . strtoupper(Str::random(8)),
@@ -52,10 +65,11 @@ class RequisitionController extends Controller
             'purpose'       => $validated['purpose'] ?? null,
         ]);
 
-        foreach ($validated['items'] as $item) {
+        foreach ($validated['items'] ?? [] as $item) {
             RequisitionItem::create([
                 'requisition_id'     => $requisition->id,
-                'product_id'         => $item['product_id'],
+                'product_id'         => $item['product_id'] ?? null,
+                'item_description'   => $item['item_description'] ?? null,
                 'requested_quantity' => $item['requested_quantity'],
             ]);
         }
@@ -79,14 +93,23 @@ class RequisitionController extends Controller
             return $this->errorResponse('Only pending requisitions can be approved', 422);
         }
 
+        // Role based check
+        $user = auth()->user();
+        if ($user->hasRole('fixed-asset-admin') && $requisition->type !== 'fixed_asset') {
+            return $this->errorResponse('You can only approve fixed asset requisitions', 403);
+        }
+        if ($user->hasRole('consumable-admin') && $requisition->type !== 'consumable') {
+            return $this->errorResponse('You can only approve consumable requisitions', 403);
+        }
+
         $validated = $request->validate([
             'remarks'                   => ['nullable', 'string'],
-            'items'                     => ['required', 'array'],
-            'items.*.id'                => ['required', 'exists:requisition_items,id'],
-            'items.*.approved_quantity' => ['required', 'integer', 'min:0'],
+            'items'                     => ['nullable', 'array'],
+            'items.*.id'                => ['required_with:items.*', 'exists:requisition_items,id'],
+            'items.*.approved_quantity' => ['required_with:items.*', 'integer', 'min:0'],
         ]);
 
-        foreach ($validated['items'] as $item) {
+        foreach ($validated['items'] ?? [] as $item) {
             $reqItem = RequisitionItem::find($item['id']);
             $approvedQty = min($item['approved_quantity'], $reqItem->requested_quantity);
             $reqItem->update(['approved_quantity' => $approvedQty]);
@@ -126,28 +149,31 @@ class RequisitionController extends Controller
             return $this->errorResponse('Only approved requisitions can be fulfilled', 422);
         }
 
+        // Fixed asset requisition — শুধু status fulfilled করো
+        if ($requisition->type === 'fixed_asset') {
+            $requisition->update(['status' => 'fulfilled']);
+            return $this->successResponse(null, 'Requisition fulfilled successfully');
+        }
+
         $validated = $request->validate([
             'items'                      => ['required', 'array'],
             'items.*.id'                 => ['required', 'exists:requisition_items,id'],
             'items.*.fulfilled_quantity' => ['required', 'integer', 'min:0'],
         ]);
 
-        // consumable requisition হলে stock check করতে হবে
-        if ($requisition->type === 'consumable') {
-            foreach ($validated['items'] as $item) {
-                $reqItem = RequisitionItem::find($item['id']);
-                $fulfilledQty = min($item['fulfilled_quantity'], $reqItem->approved_quantity);
+        // Stock check
+        foreach ($validated['items'] as $item) {
+            $reqItem = RequisitionItem::find($item['id']);
+            if (!$reqItem->product_id) continue;
+            $fulfilledQty = min($item['fulfilled_quantity'], $reqItem->approved_quantity);
+            if ($fulfilledQty <= 0) continue;
 
-                if ($fulfilledQty <= 0) continue;
-
-                // যেকোনো warehouse থেকে total stock check
-                $totalStock = Stock::where('product_id', $reqItem->product_id)->sum('quantity');
-                if ($totalStock < $fulfilledQty) {
-                    return $this->errorResponse(
-                        "Insufficient stock for product: {$reqItem->product->name}. Available: {$totalStock}, Required: {$fulfilledQty}",
-                        422
-                    );
-                }
+            $totalStock = Stock::where('product_id', $reqItem->product_id)->sum('quantity');
+            if ($totalStock < $fulfilledQty) {
+                return $this->errorResponse(
+                    "Insufficient stock for product: {$reqItem->product->name}. Available: {$totalStock}, Required: {$fulfilledQty}",
+                    422
+                );
             }
         }
 
@@ -159,11 +185,9 @@ class RequisitionController extends Controller
 
                 $reqItem->update(['fulfilled_quantity' => $fulfilledQty]);
 
-                // consumable হলে stock deduct করো
-                if ($requisition->type === 'consumable' && $fulfilledQty > 0) {
+                if ($reqItem->product_id && $fulfilledQty > 0) {
                     $remaining = $fulfilledQty;
 
-                    // FIFO — প্রথম warehouse থেকে stock কমাও
                     $stocks = Stock::where('product_id', $reqItem->product_id)
                         ->where('quantity', '>', 0)
                         ->orderBy('id')

@@ -73,6 +73,8 @@ class RolesAndPermissionsSeeder extends Seeder
         // Fixed Asset Admin
         $fixedAssetAdmin->syncPermissions([
             'view_dashboard',
+            'view_products',
+            'view_brands',
             'view_schools', 'view_departments', 'view_buildings', 'view_rooms', 'view_employees',
             'view_suppliers',
             'view_purchases', 'create_purchases', 'receive_purchases',
@@ -81,7 +83,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'maintain_fixed_assets', 'dispose_fixed_assets',
             'approve_fixed_assets',
             'view_asset_categories', 'create_asset_categories', 'edit_asset_categories', 'delete_asset_categories',
-            'view_requisitions', 'approve_requisitions', 'reject_requisitions', 'fulfill_requisitions',
+            'view_requisitions', 'create_requisitions', 'approve_requisitions', 'reject_requisitions', 'fulfill_requisitions', // ← create_requisitions add
             'view_reports',
         ]);
 
