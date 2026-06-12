@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AssetApproval;
 use App\Models\AssetAssignment;
 use App\Models\AssetTransfer;
+use App\Models\DisposalRecord;
 use App\Models\FixedAsset;
 use App\Traits\ApiResponseTrait;
 use Illuminate\Http\JsonResponse;
@@ -50,7 +51,7 @@ class AssetApprovalController extends Controller
             'action'         => 'assign',
             'status'         => 'pending',
             'payload'        => array_merge($validated, [
-                'original_status' => $fixedAsset->status, // ← restore এর জন্য
+                'original_status' => $fixedAsset->status,
             ]),
         ]);
 
@@ -89,7 +90,7 @@ class AssetApprovalController extends Controller
                 'from_department_id' => $fixedAsset->department_id,
                 'from_room_id'       => $fixedAsset->room_id,
                 'from_employee_id'   => $fixedAsset->employee_id,
-                'original_status'    => $fixedAsset->status, // ← restore এর জন্য
+                'original_status'    => $fixedAsset->status,
             ]),
         ]);
 
@@ -123,7 +124,7 @@ class AssetApprovalController extends Controller
             'action'         => 'distribute',
             'status'         => 'pending',
             'payload'        => array_merge($validated, [
-                'original_status' => $fixedAsset->status, // ← restore এর জন্য
+                'original_status' => $fixedAsset->status,
             ]),
         ]);
 
@@ -132,6 +133,42 @@ class AssetApprovalController extends Controller
         return $this->createdResponse(
             $approval->load(['fixedAsset', 'requestedBy']),
             'Distribution approval requested successfully'
+        );
+    }
+
+    public function requestDispose(Request $request, FixedAsset $fixedAsset): JsonResponse
+    {
+        if ($fixedAsset->status === 'disposed') {
+            return $this->errorResponse('Asset is already disposed', 422);
+        }
+
+        if ($fixedAsset->approvals()->where('status', 'pending')->exists()) {
+            return $this->errorResponse('Asset already has a pending approval request', 422);
+        }
+
+        $validated = $request->validate([
+            'disposal_date'  => ['required', 'date'],
+            'method'         => ['required', 'in:written_off,sold,donated,scrapped,damaged'],
+            'disposal_value' => ['nullable', 'numeric', 'min:0'],
+            'reason'         => ['nullable', 'string'],
+            'notes'          => ['nullable', 'string'],
+        ]);
+
+        $approval = AssetApproval::create([
+            'fixed_asset_id' => $fixedAsset->id,
+            'requested_by'   => auth()->id(),
+            'action'         => 'dispose',
+            'status'         => 'pending',
+            'payload'        => array_merge($validated, [
+                'original_status' => $fixedAsset->status,
+            ]),
+        ]);
+
+        $fixedAsset->update(['status' => 'pending_approval']);
+
+        return $this->createdResponse(
+            $approval->load(['fixedAsset', 'requestedBy']),
+            'Disposal approval requested successfully'
         );
     }
 
@@ -202,6 +239,18 @@ class AssetApprovalController extends Controller
                     'department_id' => $payload['department_id'],
                     'room_id'       => $payload['room_id'] ?? null,
                 ]);
+
+            } elseif ($assetApproval->action === 'dispose') {
+                DisposalRecord::create([
+                    'fixed_asset_id' => $asset->id,
+                    'disposal_date'  => $payload['disposal_date'],
+                    'method'         => $payload['method'],
+                    'disposal_value' => $payload['disposal_value'] ?? 0,
+                    'reason'         => $payload['reason'] ?? null,
+                    'disposed_by'    => auth()->id(),
+                ]);
+
+                $asset->update(['status' => 'disposed']);
             }
 
             $assetApproval->update([
@@ -230,7 +279,6 @@ class AssetApprovalController extends Controller
             'remarks' => ['required', 'string'],
         ]);
 
-        // Restore original status from payload
         $originalStatus = $assetApproval->payload['original_status'] ?? 'in_store';
         $assetApproval->fixedAsset->update(['status' => $originalStatus]);
 

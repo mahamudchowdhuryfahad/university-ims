@@ -18,6 +18,8 @@ class DepartmentController extends Controller
             ->withCount('employees')
             ->when($request->search, fn($q, $s) => $q->where('name', 'like', "%{$s}%")->orWhere('code', 'like', "%{$s}%"))
             ->when($request->school_id, fn($q, $id) => $q->where('school_id', $id))
+            ->when($request->has_school, fn($q) => $q->whereNotNull('school_id'))
+            ->when($request->no_school, fn($q) => $q->whereNull('school_id'))
             ->latest()
             ->paginate($request->per_page ?? 15);
 

@@ -142,6 +142,7 @@ Route::prefix('v1')->group(function () {
             Route::post('/fixed-assets/{fixedAsset}/request-assign', [AssetApprovalController::class, 'requestAssign']);
             Route::post('/fixed-assets/{fixedAsset}/request-transfer', [AssetApprovalController::class, 'requestTransfer']);
             Route::post('/fixed-assets/{fixedAsset}/request-distribute', [AssetApprovalController::class, 'requestDistribute']);
+            Route::post('/fixed-assets/{fixedAsset}/request-dispose', [AssetApprovalController::class, 'requestDispose']);
         });
         Route::middleware('permission:approve_fixed_assets')->group(function () {
             Route::patch('/asset-approvals/{assetApproval}/approve', [AssetApprovalController::class, 'approve']);
