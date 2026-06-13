@@ -213,6 +213,10 @@ class RequisitionController extends Controller
 
                         $remaining -= $deduct;
                     }
+
+                    if ($remaining > 0) {
+                        throw new \Exception("Stock mismatch for product: {$reqItem->product->name}. Could not deduct {$remaining} unit(s).");
+                    }
                 }
             }
 
