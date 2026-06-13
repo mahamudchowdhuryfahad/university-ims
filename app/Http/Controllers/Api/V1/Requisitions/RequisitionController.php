@@ -95,12 +95,12 @@ class RequisitionController extends Controller
 
         // Role based check
         $user = auth()->user();
-        if ($user->hasRole('fixed-asset-admin') && $requisition->type !== 'fixed_asset') {
-            return $this->errorResponse('You can only approve fixed asset requisitions', 403);
-        }
-        if ($user->hasRole('consumable-admin') && $requisition->type !== 'consumable') {
-            return $this->errorResponse('You can only approve consumable requisitions', 403);
-        }
+            if ($user->hasRole('fixed-asset-admin') || $user->hasRole('consumable-admin')) {
+                return $this->errorResponse('You do not have permission to approve requisitions', 403);
+            }
+            if (!$user->hasRole('super-admin') && !$user->hasRole('store-admin')) {
+                return $this->errorResponse('You do not have permission to approve requisitions', 403);
+}
 
         $validated = $request->validate([
             'remarks'                   => ['nullable', 'string'],

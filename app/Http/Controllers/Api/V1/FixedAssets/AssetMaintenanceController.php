@@ -40,6 +40,10 @@ class AssetMaintenanceController extends Controller
 
         $asset = FixedAsset::find($validated['fixed_asset_id']);
 
+        if (!$asset) {
+            return $this->errorResponse('Asset not found', 404);
+        }
+
         if (in_array($asset->status, ['disposed', 'under_maintenance'])) {
             return $this->errorResponse('Asset is ' . $asset->status . ' and cannot be sent for maintenance', 422);
         }
@@ -80,7 +84,18 @@ class AssetMaintenanceController extends Controller
             'remarks'          => ['nullable', 'string'],
         ]);
 
+        $newStatus = $validated['status'] ?? $assetMaintenance->status;
+        $asset = FixedAsset::find($assetMaintenance->fixed_asset_id);
+
         $assetMaintenance->update($validated);
+
+        if ($asset) {
+            if ($newStatus === 'completed') {
+                $asset->update(['status' => 'available']);
+            } else {
+                $asset->update(['status' => 'under_maintenance']);
+            }
+        }
 
         return $this->successResponse(
             $assetMaintenance->fresh(['fixedAsset', 'supplier']),
@@ -108,10 +123,13 @@ class AssetMaintenanceController extends Controller
             'remarks'         => $validated['remarks'] ?? $assetMaintenance->remarks,
         ]);
 
-        $assetMaintenance->fixedAsset->update([
-            'status'    => 'available',
-            'condition' => $validated['asset_condition'] ?? $assetMaintenance->fixedAsset->condition,
-        ]);
+        $asset = FixedAsset::find($assetMaintenance->fixed_asset_id);
+        if ($asset) {
+            $asset->update([
+                'status'    => 'available',
+                'condition' => $validated['asset_condition'] ?? $asset->condition,
+            ]);
+        }
 
         return $this->successResponse(
             $assetMaintenance->fresh(['fixedAsset']),
@@ -125,9 +143,9 @@ class AssetMaintenanceController extends Controller
             return $this->errorResponse('Cannot delete an in-progress maintenance record', 422);
         }
 
-        // If pending, restore asset status to available
-        if ($assetMaintenance->status === 'pending') {
-            $assetMaintenance->fixedAsset->update(['status' => 'available']);
+        $asset = FixedAsset::find($assetMaintenance->fixed_asset_id);
+        if ($asset && $assetMaintenance->status === 'pending') {
+            $asset->update(['status' => 'available']);
         }
 
         $assetMaintenance->delete();

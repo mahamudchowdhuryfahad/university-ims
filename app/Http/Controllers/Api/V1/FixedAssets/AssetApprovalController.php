@@ -280,7 +280,7 @@ class AssetApprovalController extends Controller
             'remarks' => ['required', 'string'],
         ]);
 
-        $originalStatus = $assetApproval->payload['original_status'] ?? 'in_store';
+        $originalStatus = $assetApproval->payload['original_status'] ?? $assetApproval->fixedAsset->status;
         $assetApproval->fixedAsset->update(['status' => $originalStatus]);
 
         $assetApproval->update([
