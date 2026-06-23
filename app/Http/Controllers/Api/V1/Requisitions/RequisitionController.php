@@ -18,16 +18,19 @@ class RequisitionController extends Controller
     use ApiResponseTrait;
 
     public function index(Request $request): JsonResponse
-    {
-        $requisitions = Requisition::with(['department', 'requestedBy', 'items.product'])
-            ->when($request->status, fn($q, $s) => $q->where('status', $s))
-            ->when($request->type, fn($q, $t) => $q->where('type', $t))
-            ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
-            ->latest()
-            ->paginate($request->per_page ?? 15);
+{
+    $user = auth()->user();
 
-        return $this->successResponse($requisitions);
-    }
+    $requisitions = Requisition::with(['department', 'requestedBy', 'items.product'])
+        ->when($user->hasRole('requester'), fn($q) => $q->where('requested_by', $user->id))
+        ->when($request->status, fn($q, $s) => $q->where('status', $s))
+        ->when($request->type, fn($q, $t) => $q->where('type', $t))
+        ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
+        ->latest()
+        ->paginate($request->per_page ?? 15);
+
+    return $this->successResponse($requisitions);
+}
 
     public function store(Request $request): JsonResponse
     {
