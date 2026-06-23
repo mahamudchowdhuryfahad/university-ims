@@ -20,7 +20,7 @@ class PurchaseController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $purchases = Purchase::with(['supplier', 'warehouse', 'createdBy', 'items'])
+        $purchases = Purchase::with(['supplier', 'warehouse', 'createdBy', 'items.product'])
             ->latest()
             ->paginate($request->per_page ?? 15);
 
@@ -32,6 +32,7 @@ class PurchaseController extends Controller
         $validated = $request->validate([
             'supplier_id'               => ['required', 'exists:suppliers,id'],
             'warehouse_id'              => ['required', 'exists:warehouses,id'],
+            'purchase_date'             => ['nullable', 'date'],
             'note'                      => ['nullable', 'string'],
             'items'                     => ['required', 'array', 'min:1'],
             'items.*.product_type'      => ['required', 'in:consumable,fixed_asset'],
@@ -61,6 +62,7 @@ class PurchaseController extends Controller
                 'supplier_id'  => $validated['supplier_id'],
                 'warehouse_id' => $validated['warehouse_id'],
                 'total_amount' => $totalAmount,
+                'purchase_date'  => $validated['purchase_date'] ?? now()->toDateString(),
                 'note'         => $validated['note'] ?? null,
                 'created_by'   => auth()->id(),
             ]);

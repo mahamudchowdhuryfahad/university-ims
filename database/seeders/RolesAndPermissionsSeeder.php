@@ -116,7 +116,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'assign_fixed_assets', 'transfer_fixed_assets', 'distribute_fixed_assets',
             'maintain_fixed_assets', 'dispose_fixed_assets',
             'view_asset_categories', 'create_asset_categories', 'edit_asset_categories', 'delete_asset_categories',
-            'view_requisitions',
+            'view_requisitions', 'approve_requisitions', 'reject_requisitions',
             'view_reports',
         ]);
 
