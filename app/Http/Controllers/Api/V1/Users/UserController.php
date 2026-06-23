@@ -104,14 +104,25 @@ class UserController extends Controller
     }
 
     public function approve(Request $request, User $user): JsonResponse
-    {
-        $validated = $request->validate([
-            'role' => ['required', 'string', 'in:requester,fixed-asset-admin,consumable-admin,store-admin,super-admin'],
+{
+    $validated = $request->validate([
+        'role' => ['required', 'string', 'in:requester,fixed-asset-admin,consumable-admin,store-admin,super-admin'],
+    ]);
+
+    $user->syncRoles([$validated['role']]);
+    $user->update(['is_active' => true]);
+
+    // Auto-create employee record if not exists
+    if (!\App\Models\Employee::where('email', $user->email)->exists()) {
+        $empId = 'EMP-' . strtoupper(\Illuminate\Support\Str::random(6));
+        \App\Models\Employee::create([
+            'name'        => $user->name,
+            'email'       => $user->email,
+            'employee_id' => $empId,
+            'status'      => 'active',
+            'is_active'   => true,
         ]);
-
-        $user->syncRoles([$validated['role']]);
-        $user->update(['is_active' => true]);
-
-        return $this->successResponse($user->fresh('roles'), 'User approved successfully');
     }
+    return $this->successResponse($user->fresh('roles'), 'User approved successfully');
+}
 }

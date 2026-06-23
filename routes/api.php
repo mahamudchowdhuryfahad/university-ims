@@ -90,6 +90,11 @@ Route::prefix('v1')->group(function () {
             Route::get('/reports/purchases', [ReportController::class, 'purchases']);
             Route::get('/reports/stock', [ReportController::class, 'stock']);
             Route::get('/reports/profit-loss', [ReportController::class, 'profitLoss']);
+            Route::get('/reports/fixed-assets/summary', [ReportController::class, 'fixedAssetSummary']);
+            Route::get('/reports/fixed-assets/by-department', [ReportController::class, 'fixedAssetByDepartment']);
+            Route::get('/reports/fixed-assets/by-room', [ReportController::class, 'fixedAssetByRoom']);
+            Route::get('/reports/fixed-assets/by-category', [ReportController::class, 'fixedAssetByCategory']);
+            Route::get('/reports/fixed-assets/export', [ReportController::class, 'fixedAssetExport']);
         });
 
         // University Structure
