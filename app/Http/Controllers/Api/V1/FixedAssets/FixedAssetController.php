@@ -232,7 +232,7 @@ class FixedAssetController extends Controller
             'department_id' => $validated['to_department_id'] ?? $fixedAsset->department_id,
             'room_id'       => $validated['to_room_id'] ?? $fixedAsset->room_id,
             'employee_id'   => $validated['to_employee_id'] ?? $fixedAsset->employee_id,
-            'status'        => $validated['to_employee_id'] ? 'assigned' : 'available',
+            'status'        => !empty($validated['to_employee_id'] ?? null) ? 'assigned' : 'available',
         ]);
 
         return $this->successResponse($transfer, 'Asset transferred successfully');
