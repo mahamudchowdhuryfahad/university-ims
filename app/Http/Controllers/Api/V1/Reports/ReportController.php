@@ -79,7 +79,6 @@ class ReportController extends Controller
             ->groupBy('department_id', 'asset_category_id', 'status')
             ->get();
 
-        // Group by department
         $grouped = [];
         foreach ($data as $row) {
             $deptId   = $row->department_id ?? 0;
@@ -200,10 +199,184 @@ class ReportController extends Controller
         return $this->successResponse($result);
     }
 
+    public function depreciationReport(Request $request): JsonResponse
+    {
+        $assets = FixedAsset::with(['assetCategory', 'department', 'room'])
+            ->when($request->category_id, fn($q, $id) => $q->where('asset_category_id', $id))
+            ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
+            ->whereNotNull('purchase_date')
+            ->whereNotNull('purchase_cost')
+            ->orderBy('department_id')
+            ->get();
+
+        $data = $assets->map(function ($asset) {
+            return [
+                'id'                       => $asset->id,
+                'asset_tag'                => $asset->asset_tag,
+                'name'                     => $asset->name,
+                'serial_number'            => $asset->serial_number,
+                'category'                 => $asset->assetCategory?->name,
+                'department'               => $asset->department?->name,
+                'room'                     => $asset->room?->room_number,
+                'purchase_date'            => $asset->purchase_date?->format('Y-m-d'),
+                'purchase_cost'            => (float) $asset->purchase_cost,
+                'depreciation_rate'        => (float) $asset->depreciation_rate,
+                'years_in_use'             => round($asset->years_in_use, 2),
+                'accumulated_depreciation' => $asset->accumulated_depreciation,
+                'current_value'            => $asset->current_value,
+                'status'                   => $asset->status,
+            ];
+        });
+
+        $summary = [
+            'total_purchase_cost' => round($assets->sum('purchase_cost'), 2),
+            'total_current_value' => round($data->sum('current_value'), 2),
+            'total_depreciation'  => round($data->sum('accumulated_depreciation'), 2),
+            'asset_count'         => $assets->count(),
+        ];
+
+        return $this->successResponse([
+            'summary' => $summary,
+            'assets'  => $data,
+        ]);
+    }
+
+    public function depreciationExport(Request $request)
+    {
+        $type = $request->type ?? 'excel';
+
+        $assets = FixedAsset::with(['assetCategory', 'department', 'room'])
+            ->when($request->category_id, fn($q, $id) => $q->where('asset_category_id', $id))
+            ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
+            ->whereNotNull('purchase_date')
+            ->whereNotNull('purchase_cost')
+            ->orderBy('department_id')
+            ->get();
+
+        if ($type === 'excel') {
+            return $this->exportDepreciationExcel($assets);
+        }
+
+        return $this->exportDepreciationPdf($assets);
+    }
+
+    private function exportDepreciationExcel($assets)
+    {
+        $filename = 'depreciation-report-' . now()->format('Y-m-d') . '.csv';
+
+        $headers = [
+            'Content-Type'        => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+        ];
+
+        $callback = function () use ($assets) {
+            $handle = fopen('php://output', 'w');
+            fprintf($handle, chr(0xEF) . chr(0xBB) . chr(0xBF));
+
+            fputcsv($handle, [
+                'SL', 'Asset Tag', 'CIU IMS ID', 'Name', 'Category',
+                'Department', 'Room', 'Purchase Date', 'Purchase Cost (BDT)',
+                'Depreciation Rate', 'Years in Use', 'Accumulated Depreciation (BDT)',
+                'Current Value / WDV (BDT)',
+            ]);
+
+            $sl = 1;
+            foreach ($assets as $asset) {
+                fputcsv($handle, [
+                    $sl++,
+                    $asset->asset_tag,
+                    $asset->serial_number ?? '-',
+                    $asset->name,
+                    $asset->assetCategory?->name ?? '-',
+                    $asset->department?->name ?? '-',
+                    $asset->room ? $asset->room->room_number : '-',
+                    $asset->purchase_date?->format('Y-m-d'),
+                    $asset->purchase_cost,
+                    ($asset->depreciation_rate * 100) . '%',
+                    (int) floor($asset->years_in_use),
+                    $asset->accumulated_depreciation,
+                    $asset->current_value,
+                ]);
+            }
+
+            fclose($handle);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    private function exportDepreciationPdf($assets)
+    {
+        $filename = 'depreciation-report-' . now()->format('Y-m-d') . '.html';
+
+        $html = '<!DOCTYPE html><html><head><meta charset="UTF-8">
+        <title>Depreciation Report</title>
+        <style>
+            body { font-family: Arial, sans-serif; font-size: 11px; margin: 20px; }
+            h1 { color: #1A3A6B; font-size: 16px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 10px; }
+            th { background: #1A3A6B; color: white; padding: 6px 8px; text-align: left; font-size: 9px; }
+            td { padding: 5px 8px; border-bottom: 1px solid #eee; font-size: 9px; }
+            tr:nth-child(even) { background: #f9f9f9; }
+            .summary { background: #f0f4ff; padding: 10px; border-radius: 4px; margin-bottom: 15px; }
+            @media print { .no-print { display: none; } }
+        </style></head><body>';
+
+        $totalCost = $assets->sum('purchase_cost');
+        $totalDep = $assets->sum('accumulated_depreciation');
+        $totalWDV = $assets->sum('current_value');
+
+        $html .= '<h1>CIU Fixed Asset Depreciation Report</h1>';
+        $html .= '<div class="summary">';
+        $html .= '<strong>Generated:</strong> ' . now()->format('d M Y, h:i A') . ' &nbsp;|&nbsp; ';
+        $html .= '<strong>Total Assets:</strong> ' . $assets->count() . ' &nbsp;|&nbsp; ';
+        $html .= '<strong>Total Purchase Cost:</strong> Tk ' . number_format($totalCost) . ' &nbsp;|&nbsp; ';
+        $html .= '<strong>Total WDV:</strong> Tk ' . number_format($totalWDV);
+        $html .= '</div>';
+
+        $html .= '<table><thead><tr>
+            <th>#</th><th>Asset Tag</th><th>Name</th><th>Department</th>
+            <th>Purchase Date</th><th>Cost</th><th>Rate</th><th>Years</th>
+            <th>Depreciation</th><th>WDV</th>
+        </tr></thead><tbody>';
+
+        foreach ($assets as $i => $asset) {
+            $html .= "<tr>
+                <td>" . ($i + 1) . "</td>
+                <td>{$asset->asset_tag}</td>
+                <td>{$asset->name}</td>
+                <td>" . ($asset->department?->name ?? '-') . "</td>
+                <td>" . $asset->purchase_date?->format('Y-m-d') . "</td>
+                <td>" . number_format($asset->purchase_cost) . "</td>
+                <td>" . ($asset->depreciation_rate * 100) . "%</td>
+                <td>" . (int) floor($asset->years_in_use) . "</td>
+                <td>" . number_format($asset->accumulated_depreciation) . "</td>
+                <td>" . number_format($asset->current_value) . "</td>
+            </tr>";
+        }
+
+        $html .= "<tr style='font-weight:bold; background:#f0f4ff;'>
+            <td colspan='5'>Total</td>
+            <td>" . number_format($totalCost) . "</td>
+            <td colspan='2'></td>
+            <td>" . number_format($totalDep) . "</td>
+            <td>" . number_format($totalWDV) . "</td>
+        </tr>";
+
+        $html .= '</tbody></table>';
+        $html .= '<script>window.onload = function() { window.print(); }</script>';
+        $html .= '</body></html>';
+
+        return response($html, 200, [
+            'Content-Type'        => 'text/html; charset=UTF-8',
+            'Content-Disposition' => "inline; filename=\"{$filename}\"",
+        ]);
+    }
+
     public function fixedAssetExport(Request $request)
     {
-        $type      = $request->type ?? 'excel'; // excel | pdf
-        $groupBy   = $request->group_by ?? 'department'; // department | room | category
+        $type      = $request->type ?? 'excel';
+        $groupBy   = $request->group_by ?? 'department';
 
         $assets = FixedAsset::with(['assetCategory', 'department', 'room', 'employee', 'supplier'])
             ->when($request->category_id, fn($q, $id) => $q->where('asset_category_id', $id))
@@ -231,9 +404,8 @@ class ReportController extends Controller
 
         $callback = function () use ($assets, $groupBy) {
             $handle = fopen('php://output', 'w');
-            fprintf($handle, chr(0xEF) . chr(0xBB) . chr(0xBF)); // UTF-8 BOM
+            fprintf($handle, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
-            // Header row
             fputcsv($handle, [
                 'SL', 'Asset Tag', 'CIU IMS ID', 'Name', 'Category',
                 'Department', 'Room', 'Supplier/Vendor', 'Status', 'Condition',
@@ -268,7 +440,6 @@ class ReportController extends Controller
     {
         $filename = 'fixed-assets-report-' . now()->format('Y-m-d') . '.html';
 
-        // Group data
         $grouped = [];
         foreach ($assets as $asset) {
             $key = match ($groupBy) {

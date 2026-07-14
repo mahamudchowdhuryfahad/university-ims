@@ -95,6 +95,8 @@ Route::prefix('v1')->group(function () {
             Route::get('/reports/fixed-assets/by-room', [ReportController::class, 'fixedAssetByRoom']);
             Route::get('/reports/fixed-assets/by-category', [ReportController::class, 'fixedAssetByCategory']);
             Route::get('/reports/fixed-assets/export', [ReportController::class, 'fixedAssetExport']);
+	    Route::get('/reports/fixed-assets/depreciation', [ReportController::class, 'depreciationReport']);
+            Route::get('/reports/fixed-assets/depreciation-export', [ReportController::class, 'depreciationExport']);
         });
 
         // University Structure
