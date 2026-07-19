@@ -16,12 +16,15 @@ protected $casts = [
         'warranty_expiry' => 'date',
         'purchase_cost' => 'decimal:2',
         'depreciation_rate' => 'decimal:4',
+        'last_audit_date' => 'date',
+        'last_audited_accumulated_depreciation' => 'decimal:2',
     ];
 
     protected $fillable = [
         'asset_tag', 'name', 'serial_number', 'model',
         'asset_category_id', 'brand_id', 'supplier_id', 'department_id',
         'room_id', 'employee_id', 'purchase_date', 'purchase_cost','depreciation_rate',
+        'last_audit_date', 'last_audited_accumulated_depreciation',
         'warranty_expiry', 'status', 'condition', 'description',
         'image', 'created_by',
     ];
@@ -51,25 +54,63 @@ protected $casts = [
 
 
     // ── Depreciation Calculation (Reducing Balance Method) ──
+
+    // Years since original purchase (used when no audit baseline exists yet)
     public function getYearsInUseAttribute(): float
     {
         if (!$this->purchase_date) return 0;
         return max(0, $this->purchase_date->diffInDays(now()) / 365);
     }
 
-    public function getCurrentValueAttribute(): float
+    // Years since the last official audit (used when an audit baseline exists)
+    public function getYearsSinceAuditAttribute(): float
     {
-        if (!$this->purchase_cost || $this->status === 'disposed') {
-            return $this->purchase_cost ?? 0;
-        }
-        $rate = $this->depreciation_rate ?? 0.20;
-        $years = $this->years_in_use;
-        return round($this->purchase_cost * pow(1 - $rate, $years), 2);
+        if (!$this->last_audit_date) return 0;
+        return max(0, $this->last_audit_date->diffInDays(now()) / 365);
+    }
+
+    // Whether this asset has an audit baseline set
+    protected function hasAuditBaseline(): bool
+    {
+        return $this->last_audit_date !== null && $this->last_audited_accumulated_depreciation !== null;
     }
 
     public function getAccumulatedDepreciationAttribute(): float
     {
         if (!$this->purchase_cost) return 0;
-        return round($this->purchase_cost - $this->current_value, 2);
+
+        if ($this->hasAuditBaseline()) {
+            $rate = (float) ($this->depreciation_rate ?? 0.20);
+            $opening = (float) $this->last_audited_accumulated_depreciation;
+            $years = $this->years_since_audit;
+
+            // Depreciation During the Period = (Invoice Price - Opening Balance) x Rate x Years
+            $depreciationDuringPeriod = ((float) $this->purchase_cost - $opening) * $rate * $years;
+
+            $accumulated = $opening + $depreciationDuringPeriod;
+
+            // Never exceed the original purchase cost
+            return round(min($accumulated, (float) $this->purchase_cost), 2);
+        }
+
+        // No audit baseline yet: fall back to continuous calculation from purchase date
+        return round((float) $this->purchase_cost - $this->current_value, 2);
+    }
+
+    public function getCurrentValueAttribute(): float
+    {
+        if (!$this->purchase_cost || $this->status === 'disposed') {
+            return (float) ($this->purchase_cost ?? 0);
+        }
+
+        if ($this->hasAuditBaseline()) {
+            // WDV = Invoice Price - Accumulated Depreciation
+            return round((float) $this->purchase_cost - $this->accumulated_depreciation, 2);
+        }
+
+        // No audit baseline yet: continuous reducing-balance from purchase date
+        $rate = (float) ($this->depreciation_rate ?? 0.20);
+        $years = $this->years_in_use;
+        return round((float) $this->purchase_cost * pow(1 - $rate, $years), 2);
     }
 }

@@ -45,8 +45,6 @@ class ReportController extends Controller
         return $this->errorResponse('Profit/Loss report is not available', 404);
     }
 
-    // ─── Fixed Asset Reports ───────────────────────────────────────────────────
-
     public function fixedAssetSummary(Request $request): JsonResponse
     {
         $query = FixedAsset::query()
@@ -199,9 +197,40 @@ class ReportController extends Controller
         return $this->successResponse($result);
     }
 
+    private function depreciationLineItem(FixedAsset $asset): array
+    {
+        $openingBalance = $asset->last_audited_accumulated_depreciation !== null
+            ? (float) $asset->last_audited_accumulated_depreciation
+            : 0.0;
+
+        $accumulatedDepreciation = (float) $asset->accumulated_depreciation;
+        $depreciationDuringPeriod = round($accumulatedDepreciation - $openingBalance, 2);
+
+        return [
+            'id'                        => $asset->id,
+            'asset_tag'                 => $asset->asset_tag,
+            'name'                      => $asset->name,
+            'serial_number'             => $asset->serial_number,
+            'category'                  => $asset->assetCategory?->name,
+            'department'                => $asset->department?->name,
+            'room'                      => $asset->room?->room_number,
+            'brand'                     => $asset->brand?->name,
+            'purchase_date'             => $asset->purchase_date?->format('Y-m-d'),
+            'purchase_cost'             => (float) $asset->purchase_cost,
+            'depreciation_rate'         => (float) $asset->depreciation_rate,
+            'years_in_use'              => round($asset->years_in_use, 2),
+            'opening_balance'           => round($openingBalance, 2),
+            'depreciation_during_period'=> $depreciationDuringPeriod,
+            'accumulated_depreciation'  => round($accumulatedDepreciation, 2),
+            'current_value'             => (float) $asset->current_value,
+            'status'                    => $asset->status,
+            'last_audit_date'           => $asset->last_audit_date?->format('Y-m-d'),
+        ];
+    }
+
     public function depreciationReport(Request $request): JsonResponse
     {
-        $assets = FixedAsset::with(['assetCategory', 'department', 'room'])
+        $assets = FixedAsset::with(['assetCategory', 'department', 'room', 'brand'])
             ->when($request->category_id, fn($q, $id) => $q->where('asset_category_id', $id))
             ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
             ->whereNotNull('purchase_date')
@@ -209,27 +238,12 @@ class ReportController extends Controller
             ->orderBy('department_id')
             ->get();
 
-        $data = $assets->map(function ($asset) {
-            return [
-                'id'                       => $asset->id,
-                'asset_tag'                => $asset->asset_tag,
-                'name'                     => $asset->name,
-                'serial_number'            => $asset->serial_number,
-                'category'                 => $asset->assetCategory?->name,
-                'department'               => $asset->department?->name,
-                'room'                     => $asset->room?->room_number,
-                'purchase_date'            => $asset->purchase_date?->format('Y-m-d'),
-                'purchase_cost'            => (float) $asset->purchase_cost,
-                'depreciation_rate'        => (float) $asset->depreciation_rate,
-                'years_in_use'             => round($asset->years_in_use, 2),
-                'accumulated_depreciation' => $asset->accumulated_depreciation,
-                'current_value'            => $asset->current_value,
-                'status'                   => $asset->status,
-            ];
-        });
+        $data = $assets->map(fn($asset) => $this->depreciationLineItem($asset));
 
         $summary = [
             'total_purchase_cost' => round($assets->sum('purchase_cost'), 2),
+            'total_opening_balance' => round($data->sum('opening_balance'), 2),
+            'total_depreciation_during_period' => round($data->sum('depreciation_during_period'), 2),
             'total_current_value' => round($data->sum('current_value'), 2),
             'total_depreciation'  => round($data->sum('accumulated_depreciation'), 2),
             'asset_count'         => $assets->count(),
@@ -245,7 +259,7 @@ class ReportController extends Controller
     {
         $type = $request->type ?? 'excel';
 
-        $assets = FixedAsset::with(['assetCategory', 'department', 'room'])
+        $assets = FixedAsset::with(['assetCategory', 'department', 'room', 'brand'])
             ->when($request->category_id, fn($q, $id) => $q->where('asset_category_id', $id))
             ->when($request->department_id, fn($q, $id) => $q->where('department_id', $id))
             ->whereNotNull('purchase_date')
@@ -274,30 +288,40 @@ class ReportController extends Controller
             fprintf($handle, chr(0xEF) . chr(0xBB) . chr(0xBF));
 
             fputcsv($handle, [
-                'SL', 'Asset Tag', 'CIU IMS ID', 'Name', 'Category',
-                'Department', 'Room', 'Purchase Date', 'Purchase Cost (BDT)',
-                'Depreciation Rate', 'Years in Use', 'Accumulated Depreciation (BDT)',
-                'Current Value / WDV (BDT)',
+                'Sl. No.', 'Date/Year of purchase', 'Type of asset', 'Particular', 'Qty',
+                'Location', 'User Department', 'New id no', 'Vendors name',
+                'Invoice price', 'Opening balance', 'Rate of depreciation',
+                'Depreciation during the period', 'Accumulated depreciation', 'WDV', 'Status',
             ]);
 
             $sl = 1;
             foreach ($assets as $asset) {
+                $item = $this->depreciationLineItem($asset);
                 fputcsv($handle, [
                     $sl++,
-                    $asset->asset_tag,
-                    $asset->serial_number ?? '-',
-                    $asset->name,
-                    $asset->assetCategory?->name ?? '-',
-                    $asset->department?->name ?? '-',
-                    $asset->room ? $asset->room->room_number : '-',
-                    $asset->purchase_date?->format('Y-m-d'),
-                    $asset->purchase_cost,
-                    ($asset->depreciation_rate * 100) . '%',
-                    (int) floor($asset->years_in_use),
-                    $asset->accumulated_depreciation,
-                    $asset->current_value,
+                    $item['purchase_date'],
+                    $item['category'] ?? '-',
+                    $item['name'],
+                    1,
+                    $item['room'] ?? '-',
+                    $item['department'] ?? '-',
+                    $item['serial_number'] ?? '-',
+                    $item['brand'] ?? '-',
+                    $item['purchase_cost'],
+                    $item['opening_balance'],
+                    ($item['depreciation_rate'] * 100) . '%',
+                    $item['depreciation_during_period'],
+                    $item['accumulated_depreciation'],
+                    $item['current_value'],
+                    ucfirst(str_replace('_', ' ', $item['status'])),
                 ]);
             }
+
+            fputcsv($handle, []);
+            fputcsv($handle, ['This report was automatically generated by the CIU Inventory Management System (IMS).']);
+            fputcsv($handle, ['(c) ' . now()->format('Y') . ' Chittagong Independent University. All rights reserved. Unauthorized reproduction or distribution of this report is prohibited.']);
+            fputcsv($handle, ['Developed and maintained by the CIU Software Development Team.']);
+            fputcsv($handle, ['Report generated on: ' . now()->format('d M Y, h:i A')]);
 
             fclose($handle);
         };
@@ -322,9 +346,13 @@ class ReportController extends Controller
             @media print { .no-print { display: none; } }
         </style></head><body>';
 
+        $items = $assets->map(fn($asset) => $this->depreciationLineItem($asset));
+
         $totalCost = $assets->sum('purchase_cost');
-        $totalDep = $assets->sum('accumulated_depreciation');
-        $totalWDV = $assets->sum('current_value');
+        $totalOpening = $items->sum('opening_balance');
+        $totalDepPeriod = $items->sum('depreciation_during_period');
+        $totalDep = $items->sum('accumulated_depreciation');
+        $totalWDV = $items->sum('current_value');
 
         $html .= '<h1>CIU Fixed Asset Depreciation Report</h1>';
         $html .= '<div class="summary">';
@@ -336,40 +364,48 @@ class ReportController extends Controller
 
         $html .= '<table><thead><tr>
             <th>#</th><th>Asset Tag</th><th>Name</th><th>Department</th>
-            <th>Purchase Date</th><th>Cost</th><th>Rate</th><th>Years</th>
-            <th>Depreciation</th><th>WDV</th>
+            <th>Purchase Date</th><th>Cost</th><th>Opening Balance</th><th>Rate</th>
+            <th>Depreciation</th><th>Accumulated</th><th>WDV</th>
         </tr></thead><tbody>';
 
-        foreach ($assets as $i => $asset) {
+        foreach ($items as $i => $item) {
             $html .= "<tr>
                 <td>" . ($i + 1) . "</td>
-                <td>{$asset->asset_tag}</td>
-                <td>{$asset->name}</td>
-                <td>" . ($asset->department?->name ?? '-') . "</td>
-                <td>" . $asset->purchase_date?->format('Y-m-d') . "</td>
-                <td>" . number_format($asset->purchase_cost) . "</td>
-                <td>" . ($asset->depreciation_rate * 100) . "%</td>
-                <td>" . (int) floor($asset->years_in_use) . "</td>
-                <td>" . number_format($asset->accumulated_depreciation) . "</td>
-                <td>" . number_format($asset->current_value) . "</td>
+                <td>{$item['asset_tag']}</td>
+                <td>{$item['name']}</td>
+                <td>" . ($item['department'] ?? '-') . "</td>
+                <td>" . $item['purchase_date'] . "</td>
+                <td>" . number_format($item['purchase_cost']) . "</td>
+                <td>" . number_format($item['opening_balance']) . "</td>
+                <td>" . ($item['depreciation_rate'] * 100) . "%</td>
+                <td>" . number_format($item['depreciation_during_period']) . "</td>
+                <td>" . number_format($item['accumulated_depreciation']) . "</td>
+                <td>" . number_format($item['current_value']) . "</td>
             </tr>";
         }
 
         $html .= "<tr style='font-weight:bold; background:#f0f4ff;'>
-            <td colspan='5'>Total</td>
-            <td>" . number_format($totalCost) . "</td>
-            <td colspan='2'></td>
+            <td colspan='6'>Total</td>
+            <td>" . number_format($totalOpening) . "</td>
+            <td></td>
+            <td>" . number_format($totalDepPeriod) . "</td>
             <td>" . number_format($totalDep) . "</td>
             <td>" . number_format($totalWDV) . "</td>
         </tr>";
 
         $html .= '</tbody></table>';
+        $html .= '<div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ccc; font-size: 9px; color: #666; text-align: center;">';
+        $html .= '<p>This report was automatically generated by the CIU Inventory Management System (IMS).</p>';
+        $html .= '<p>&copy; ' . now()->format('Y') . ' Chittagong Independent University. All rights reserved. Unauthorized reproduction or distribution of this report is prohibited.</p>';
+        $html .= '<p>Developed and maintained by CIU Software Team.</p>';
+        $html .= '<p>Report generated on: ' . now()->format('d M Y, h:i A') . '</p>';
+        $html .= '</div>';
         $html .= '<script>window.onload = function() { window.print(); }</script>';
         $html .= '</body></html>';
 
         return response($html, 200, [
             'Content-Type'        => 'text/html; charset=UTF-8',
-            'Content-Disposition' => "inline; filename=\"{$filename}\"",
+            // 'Content-Disposition' => "inline; filename=\"{$filename}\"",
         ]);
     }
 
